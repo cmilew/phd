@@ -1,0 +1,26 @@
+# NumberOfRun    = 1
+# NumberOfEvents = 500
+# NumberOfTracks = 556
+# NumberOfSteps  = 3192
+# NumberOfGeometricalSteps  = ?
+# NumberOfPhysicalSteps     = ?
+# ElapsedTime           = 1.3603649999999998
+# ElapsedTimeWoInit     = 0.040628
+# StartDate             = 0 ps 
+# EndDate               = 1 s  
+# PPS (Primary per sec)      = 12307
+# TPS (Track per sec)        = 13685
+# SPS (Step per sec)         = 78567
+# Threads                    = 1
+# Date                       = 2024-06-06 16:09:44.577249
+# Arch                       = Linux
+# Python                     = 3.9.19
+# Track types:
+# C12 = 2
+# N14 = 3
+# O16 = 15
+# Si28 = 13
+# Si29 = 1
+# e+ = 9
+# e- = 11
+# gamma = 502
