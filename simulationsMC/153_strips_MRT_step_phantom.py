@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 import opengate as gate
 import numpy as np
 import pandas as pd
+import uproot
 
 
 # units
@@ -27,7 +29,8 @@ def create_microbeam_array(n_microbeams, center_to_center, *, offset_to_center=0
     center_positions = create_array_of_elements(n_microbeams, center_to_center, offset_to_center=offset_to_center)
 
     # retrieve microbeams spectrum
-    df = pd.read_excel("/home/cmilew/simu_MC/ESRF_spectrum.xlsx", skiprows=6)
+    spectrum_path = os.path.join(os.path.dirname(__file__), "ESRF_spectrum.xlsx")
+    df = pd.read_excel(spectrum_path, skiprows=6)
     spectrum_energy = df['Energy [eV]'].to_numpy()
     spectrum_weight = df['Flux_1'].to_numpy()
     spectrum_weight = spectrum_weight / np.sum(spectrum_weight)
@@ -60,8 +63,10 @@ def create_stripped_detector(n_strips, center_to_center, *, offset_to_center=0):
 
         # sets hit digitizers
         hits_digit = sim.add_actor('DigitizerHitsCollectionActor', f"hits {strip_number}")
-        hits_digit.mother = f"strip {strip_number}"
-        hits_digit.output = '/home/cmilew/simu_MC/hits_record/hits_strip_' + str(strip_number) + '.root'
+        hits_digit.mother = f"strip_{strip_number}"
+        path_output_file = os.path.join(os.path.dirname(__file__), f'{strip_number}_hits.root')
+        # hits_digit.output = '/home/cmilew/simu_MC/hits_record/hits_strip_' + str(strip_number) + '.root'
+        hits_digit.output = path_output_file
         hits_digit.attributes = ['TotalEnergyDeposit', 'TrackID']
 
         # sets production cut
@@ -73,7 +78,8 @@ if __name__ == "__main__":
 
     # create the simulation
     sim = gate.Simulation()
-    sim.volume_manager.add_material_database("/home/cmilew/simu_MC/additional_materials.db")
+    db_path = os.path.join(os.path.dirname(__file__), "additional_materials.db")
+    sim.volume_manager.add_material_database(db_path)
 
     # main options
     sim.g4_verbose = False
@@ -96,17 +102,29 @@ if __name__ == "__main__":
     # wb.color = [1, 0.7, 0.7, 0.8]
 
     # PBC part of the detector definition
-    PBC_detector = sim.add_volume("Box", "PVC_detector")
-    PBC_detector.size = [20 * cm, 10 * cm, 1 * cm]
-    PBC_detector.material = "PBC"
-    PBC_detector.color = [0.5, 0.5, 0.5, 1]
-    PBC_detector.translation = [0, 0 * cm, 3.3 * m]
+    # PBC_detector = sim.add_volume("Box", "PVC_detector")
+    # PBC_detector.size = [20 * cm, 10 * cm, 1 * cm]
+    # PBC_detector.material = "PBC"
+    # PBC_detector.color = [0.5, 0.5, 0.5, 1]
+    # PBC_detector.translation = [0, 0 * cm, 3.3 * m]
 
     # microbeam array definition (shifted of 200µm to align 25th microbeam with central strip of detector)
     create_microbeam_array(50, 400e-6 * m, offset_to_center=200e-6 * m)
 
     # detector definition
-    create_stripped_detector(5, 232.5e-4 * m)
+    # create_stripped_detector(5, 232.5e-4 * m)
+    detector = sim.add_volume("Box", "detector")
+    detector.size = [20 * cm, 10 * cm, 1 * cm]
+    detector.material = "G4_C"
+    detector.color = [0.5, 0.5, 0.5, 1]
+    detector.translation = [0, 0 * cm, 3.3 * m]
+    sim.physics_manager.set_production_cut("detector", "all", 0.1 * mm)
+    hits_digit = sim.add_actor('DigitizerHitsCollectionActor', f"hits_detector")
+    hits_digit.mother = f"detector"
+    path_output_file = os.path.join(os.path.dirname(__file__), 'detector_hits.root')
+    hits_digit.output = path_output_file
+    hits_digit.attributes = ['TotalEnergyDeposit', 'TrackID']
+
 
     # phys
     sim.physics_manager.physics_list_name = "G4EmLivermorePolarizedPhysics"
@@ -116,7 +134,7 @@ if __name__ == "__main__":
     # stat actor
     s = sim.add_actor("SimulationStatisticsActor", "stats")
     s.track_types_flag = True
-    s.output = '/home/cmilew/simu_MC//stats2.txt'
+    s.output = os.path.join(os.path.join(os.path.dirname(__file__), "output") , "stats2.txt")
 
     # ---------------------------------------------------------------------
     # start simulation
