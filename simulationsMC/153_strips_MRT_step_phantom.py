@@ -12,6 +12,7 @@ import uproot
 m = gate.g4_units.m
 cm = gate.g4_units.cm
 mm = gate.g4_units.mm
+um = gate.g4_units.um
 nm = gate.g4_units.nm
 keV = gate.g4_units.keV
 
@@ -38,7 +39,7 @@ def create_microbeam_array(n_microbeams, center_to_center, *, offset_to_center=0
     for beam_number, pos in enumerate(center_positions):
         source = sim.add_source("GenericSource", f"microbeam {beam_number}")
         source.particle = "gamma"
-        source.n = 10 / sim.number_of_threads
+        source.n = 100_000 / sim.number_of_threads
         source.position.type = "box"
         source.position.size = [50e-6 * m, 795e-6 * m, 1 * nm]
         source.position.translation = [pos, 0 * cm, -3.3 * m]
@@ -65,7 +66,6 @@ def create_stripped_detector(n_strips, center_to_center, *, offset_to_center=0):
         hits_digit = sim.add_actor('DigitizerHitsCollectionActor', f"hits {strip_number}")
         hits_digit.mother = f"strip_{strip_number}"
         path_output_file = os.path.join(os.path.dirname(__file__), f'{strip_number}_hits.root')
-        # hits_digit.output = '/home/cmilew/simu_MC/hits_record/hits_strip_' + str(strip_number) + '.root'
         hits_digit.output = path_output_file
         hits_digit.attributes = ['TotalEnergyDeposit', 'TrackID']
 
@@ -83,7 +83,7 @@ if __name__ == "__main__":
 
     # main options
     sim.g4_verbose = False
-    sim.visu = True
+    sim.visu = False
     sim.visu_type = "vrml"
     sim.check_volumes_overlap = False
     sim.number_of_threads = 1
@@ -99,7 +99,7 @@ if __name__ == "__main__":
     wb.translation = [0, 0, -2 * m]
     wb.material = "RW3"
     wb.color = [0, 0, 1, 1]  # blue
-    # wb.color = [1, 0.7, 0.7, 0.8]
+    wb.color = [1, 0.7, 0.7, 0.8]
 
     # PBC part of the detector definition
     # PBC_detector = sim.add_volume("Box", "PVC_detector")
@@ -113,15 +113,15 @@ if __name__ == "__main__":
 
     # detector definition
     # create_stripped_detector(5, 232.5e-4 * m)
-    detector = sim.add_volume("Box", "detector")
-    detector.size = [20 * cm, 10 * cm, 1 * cm]
-    detector.material = "G4_C"
-    detector.color = [0.5, 0.5, 0.5, 1]
-    detector.translation = [0, 0 * cm, 3.3 * m]
-    sim.physics_manager.set_production_cut("detector", "all", 0.1 * mm)
-    hits_digit = sim.add_actor('DigitizerHitsCollectionActor', f"hits_detector")
-    hits_digit.mother = f"detector"
-    path_output_file = os.path.join(os.path.dirname(__file__), 'detector_hits.root')
+    central_strip = sim.add_volume("Box", "central_strip")
+    central_strip.size = [172.5e-6 * m, 3 * mm, 150e-6 * m]
+    central_strip.material = "G4_C"
+    central_strip.color = [0, 0, 1, 1]  
+    central_strip.translation = [0, 0 * cm, 3.3 * m]
+    sim.physics_manager.set_production_cut("central_strip", "all", 2.5 * um)
+    hits_digit = sim.add_actor('DigitizerHitsCollectionActor', "hits_central_strip")
+    hits_digit.mother = "central_strip"
+    path_output_file = os.path.join(os.path.dirname(__file__), 'central_strip_hits.root')
     hits_digit.output = path_output_file
     hits_digit.attributes = ['TotalEnergyDeposit', 'TrackID']
 
