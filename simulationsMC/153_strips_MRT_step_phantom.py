@@ -5,7 +5,8 @@ import os
 import opengate as gate
 import numpy as np
 import pandas as pd
-import uproot
+import itk
+
 
 
 # units
@@ -39,7 +40,7 @@ def create_microbeam_array(n_microbeams, center_to_center, *, offset_to_center=0
     for beam_number, pos in enumerate(center_positions):
         source = sim.add_source("GenericSource", f"microbeam {beam_number}")
         source.particle = "gamma"
-        source.n = 100_000 / sim.number_of_threads
+        source.n = N_PARTICLES / sim.number_of_threads
         source.position.type = "box"
         source.position.size = [50e-6 * m, 795e-6 * m, 1 * nm]
         source.position.translation = [pos, 0 * cm, -3.3 * m]
@@ -76,6 +77,10 @@ def create_stripped_detector(n_strips, center_to_center, *, offset_to_center=0):
 
 if __name__ == "__main__":
 
+    N_PARTICLES = 2_000_000
+    N_THREADS = 60
+    RW3_thickness = 4
+
     # create the simulation
     sim = gate.Simulation()
     db_path = os.path.join(os.path.dirname(__file__), "additional_materials.db")
@@ -86,7 +91,7 @@ if __name__ == "__main__":
     sim.visu = False
     sim.visu_type = "vrml"
     sim.check_volumes_overlap = False
-    sim.number_of_threads = 1
+    sim.number_of_threads = N_THREADS
     sim.random_seed = "auto"
 
     # world size
@@ -95,7 +100,7 @@ if __name__ == "__main__":
 
     # RW3 slab definition
     wb = sim.add_volume("Box", "RW3_slab")
-    wb.size = [16 * cm, 2 * cm, 1 * cm]
+    wb.size = [16 * cm, 2 * cm, RW3_thickness * cm]
     wb.translation = [0, 0, -2 * m]
     wb.material = "RW3"
     wb.color = [0, 0, 1, 1]  # blue
@@ -119,9 +124,24 @@ if __name__ == "__main__":
     central_strip.color = [0, 0, 1, 1]  
     central_strip.translation = [0, 0 * cm, 3.3 * m]
     sim.physics_manager.set_production_cut("central_strip", "all", 2.5 * um)
+
+    dose = sim.add_actor("DoseActor", "dose")
+    dose.mother = "central_strip"
+    dose.output = f"central_strip_{RW3_thickness}cm_RW3.mhd"
+    # dose.spacing = [172.5e-6 * m, 3 * mm, 150e-6 * m]
+    # dose.translation = [0, 0 * cm, 3.3 * m]
+    # dose.uncertainty = True
+    # dose.hit_type = "random"
+    # dose.dose = True
+    # dose.dose_calc_on_the_fly = (
+    #     False  # calc dose as edep/mass after end of simulation
+    # )
+    dose.size = [1, 1, 1]
+
+    # hits digitizer
     hits_digit = sim.add_actor('DigitizerHitsCollectionActor', "hits_central_strip")
     hits_digit.mother = "central_strip"
-    path_output_file = os.path.join(os.path.dirname(__file__), 'central_strip_hits.root')
+    path_output_file = os.path.join(os.path.dirname(__file__), f'central_strip_{RW3_thickness}cm_RW3_hits.root')
     hits_digit.output = path_output_file
     hits_digit.attributes = ['TotalEnergyDeposit', 'TrackID']
 
@@ -142,3 +162,7 @@ if __name__ == "__main__":
 
     stats = sim.output.get_actor("stats")
     print(stats)
+
+        # read output
+    d_post_path = sim.output.get_actor("dose").user_info.output
+    img_mhd_out = itk.imread(d_post_path)
