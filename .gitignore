@@ -1,3 +1,5 @@
 *.wrl
 *.mhd
 *.raw
+*.root
+
