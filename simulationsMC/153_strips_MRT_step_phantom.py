@@ -77,7 +77,7 @@ def create_stripped_detector(n_strips, center_to_center, *, offset_to_center=0):
 
 if __name__ == "__main__":
 
-    N_PARTICLES = 2_000_000
+    N_PARTICLES = 20_000_000
     N_THREADS = 60
     RW3_thickness = 4
 
@@ -99,12 +99,12 @@ if __name__ == "__main__":
     sim.world.material = "G4_AIR"
 
     # RW3 slab definition
-    wb = sim.add_volume("Box", "RW3_slab")
-    wb.size = [16 * cm, 2 * cm, RW3_thickness * cm]
-    wb.translation = [0, 0, -2 * m]
-    wb.material = "RW3"
-    wb.color = [0, 0, 1, 1]  # blue
-    wb.color = [1, 0.7, 0.7, 0.8]
+    # wb = sim.add_volume("Box", "RW3_slab")
+    # wb.size = [16 * cm, 2 * cm, RW3_thickness * cm]
+    # wb.translation = [0, 0, -2 * m]
+    # wb.material = "RW3"
+    # wb.color = [0, 0, 1, 1]  # blue
+    # wb.color = [1, 0.7, 0.7, 0.8]
 
     # PBC part of the detector definition
     # PBC_detector = sim.add_volume("Box", "PVC_detector")
@@ -149,7 +149,7 @@ if __name__ == "__main__":
     # phys
     sim.physics_manager.physics_list_name = "G4EmLivermorePolarizedPhysics"
     sim.physics_manager.set_production_cut("world", "all", 10 * m)
-    sim.physics_manager.set_production_cut("RW3_slab", "all", 1 * mm)
+    # sim.physics_manager.set_production_cut("RW3_slab", "all", 1 * mm)
 
     # stat actor
     s = sim.add_actor("SimulationStatisticsActor", "stats")

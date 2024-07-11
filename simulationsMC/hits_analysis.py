@@ -1,19 +1,22 @@
 import os
+
 # import opengate as gate
 # import numpy as np
 # import pandas as pd
 import uproot
 import SimpleITK as sitk
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 
 # f = uproot.open(os.path.join(os.path.dirname(__file__), "central_strip_hits.root"))
 # energy_deposited = f['hits_central_strip;1']['TotalEnergyDeposit'].array().to_numpy()
 # plt.hist(f['hits_central_strip;1']['TotalEnergyDeposit'].array(), bins=100, range=(0, 1.4))
 # plt.show()
-RW3_thickness = 4
+water_thickness = 3
 
-path_edep = f"/home/candice/Documents/phd/central_strip_{RW3_thickness}cm_RW3-edep.mhd"
-path_edep_uncertain = f"/home/candice/Documents/phd/central_strip_{RW3_thickness}cm_RW3-edep-uncertainty.mhd"
+path_edep = (
+    f"/home/candice/Documents/phd/diamond_detector_{water_thickness}cm_water-edep.mhd"
+)
+path_edep_uncertain = f"/home/candice/Documents/phd/diamond_detector_{water_thickness}cm_water-edep-uncertainty.mhd"
 # path_edep = "/home/candice/Documents/phd/central_strip_dose-dose.mhd"
 # path_edep_uncertain = "/home/candice/Documents/phd/central_strip_dose-dose-uncertainty.mhd"
 
