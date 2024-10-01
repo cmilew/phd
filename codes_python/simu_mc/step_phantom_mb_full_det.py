@@ -43,31 +43,29 @@ def create_stripped_detector(
         # dose actor
         dose = sim.add_actor("DoseActor", "dose_strip_" + str(strip_number))
         dose.mother = f"strip {strip_number}"
-        dose.output = f"output/{water_thickness}cm_w_strip_{strip_number}.mhd"
+        dose.output = f"output/{rw3_thickness}cm_rw3_strip_{strip_number}.mhd"
         dose.square = False
         dose.dose = False
         dose.size = [1, 1, 1]
 
-        # # sets hit digitizers
-        # hits_digit = sim.add_actor(
-        #     "DigitizerHitsCollectionActor", f"hits {strip_number}"
-        # )
-        # hits_digit.mother = f"strip {strip_number}"
-        # hits_digit.output = (
-        #     r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\simulations_MC\output\hits_strip_"
-        #     + str(strip_number)
-        #     + ".root"
-        # )
-        # hits_digit.attributes = ["TotalEnergyDeposit", "TrackID"]
+        # sets hit digitizers
+        hits_digit = sim.add_actor(
+            "DigitizerHitsCollectionActor", f"hits_{strip_number}"
+        )
+        hits_digit.mother = f"strip {strip_number}"
+        hits_digit.output = f"output/{rw3_thickness}cm_rw3_strip_{strip_number}.root"
+        hits_digit.attributes = ["TotalEnergyDeposit", "TrackID"]
 
         # sets production cut
         sim.physics_manager.set_production_cut(f"strip {strip_number}", "all", 0.1 * mm)
 
 
 if __name__ == "__main__":
-    N_PARTICLES = 1_000_000_000
-    N_THREADS = 62
-    water_thickness = 0
+    # N_PARTICLES = 1_000_000_000
+    # N_THREADS = 62
+    N_PARTICLES = 10_000
+    N_THREADS = 1
+    rw3_thickness = 0
 
     # create the simulation
     sim = gate.Simulation()
@@ -98,14 +96,14 @@ if __name__ == "__main__":
     source.energy.type = "mono"
     source.energy.mono = 123 * keV
 
-    # Water slab definition
-    if water_thickness != 0:
-        wb = sim.add_volume("Box", "water_slab")
-        wb.size = [10 * cm, 10 * cm, water_thickness * cm]
+    # RW3 slab definition
+    if rw3_thickness != 0:
+        wb = sim.add_volume("Box", "rw3_slab")
+        wb.size = [10 * cm, 10 * cm, rw3_thickness * cm]
         wb.translation = [0, 0, -2 * m]
-        wb.material = "G4_WATER"
+        wb.material = "RW3"
         wb.color = [0, 0, 1, 1]
-        sim.physics_manager.set_production_cut("water_slab", "all", 1 * mm)
+        sim.physics_manager.set_production_cut("rw3_slab", "all", 1 * mm)
 
     # diamond detector definition
     diamond_detector = sim.add_volume("Box", "diamond_detector")
@@ -113,17 +111,20 @@ if __name__ == "__main__":
     diamond_detector.size = [32.104 * mm, 3.32 * mm, 150e-6 * m]
     diamond_detector.material = "diamant_det"
     diamond_detector.color = [0, 1, 1, 1]
+
     # lateral shift of det
     # 136 strips (8 diamonds), if no lat shift mb centered between strip 68 and 69
     # to center mb on strip 60 (= strip 77 if 9 diamonds) : lat shift of 8 * pitch +
     # half strip widht and half interstrip distance
-    nb_offset_strips = 8
-    lat_shift = (nb_offset_strips * 232.5 + 172.5 / 2 + 0.06 / 2) * 10 ** (-6)
+    # nb_offset_strips = 8
+    # lat_shift = (nb_offset_strips * 232.5 + 172.5 / 2 + 0.06 / 2) * 10 ** (-6)
+    lat_shift = 0
     diamond_detector.translation = [lat_shift, 0, 3.3 * m]
     sim.physics_manager.set_production_cut("diamond_detector", "all", 1 * mm)
 
     # strips detector definition
-    create_stripped_detector("diamond_detector", 136, 232.5e-6 * m)
+    # create_stripped_detector("diamond_detector", 136, 232.5e-6 * m)
+    create_stripped_detector("diamond_detector", 17, 232.5e-6 * m)
 
     # phys
     sim.physics_manager.physics_list_name = "G4EmLivermorePolarizedPhysics"
