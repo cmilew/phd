@@ -61,11 +61,12 @@ def create_stripped_detector(
 
 
 if __name__ == "__main__":
-    # N_PARTICLES = 1_000_000_000
-    # N_THREADS = 62
-    N_PARTICLES = 10_000
+    N_PARTICLES = 100_000
     N_THREADS = 1
     rw3_thickness = 0
+    nb_offset_strips = 2
+    # negative = towards 136, position = towards 1
+    direction_offset = 1
 
     # create the simulation
     sim = gate.Simulation()
@@ -85,7 +86,7 @@ if __name__ == "__main__":
     sim.world.material = "Air"
 
     # Microbeam definition
-    source = sim.add_source("GenericSource", f"broad beam")
+    source = sim.add_source("GenericSource", "broad beam")
     source.particle = "gamma"
     source.n = N_PARTICLES / sim.number_of_threads
     source.position.type = "box"
@@ -107,24 +108,18 @@ if __name__ == "__main__":
 
     # diamond detector definition
     diamond_detector = sim.add_volume("Box", "diamond_detector")
-    # 8 diamonds of 4.013 mm width = 32.104 mm
+    # 8 diamonds * 4.013 mm width = 32.104 mm
     diamond_detector.size = [32.104 * mm, 3.32 * mm, 150e-6 * m]
     diamond_detector.material = "diamant_det"
     diamond_detector.color = [0, 1, 1, 1]
 
-    # lateral shift of det
-    # 136 strips (8 diamonds), if no lat shift mb centered between strip 68 and 69
-    # to center mb on strip 60 (= strip 77 if 9 diamonds) : lat shift of 8 * pitch +
-    # half strip widht and half interstrip distance
-    # nb_offset_strips = 8
-    # lat_shift = (nb_offset_strips * 232.5 + 172.5 / 2 + 0.06 / 2) * 10 ** (-6)
-    lat_shift = 0
-    diamond_detector.translation = [lat_shift, 0, 3.3 * m]
+    # lateral shift of det to define which strip is facing the mb
+    lat_shift = (232.5 / 2 + 232.5 * nb_offset_strips) * direction_offset
+    diamond_detector.translation = [lat_shift * um, 0, 3.3 * m]
     sim.physics_manager.set_production_cut("diamond_detector", "all", 1 * mm)
 
     # strips detector definition
-    # create_stripped_detector("diamond_detector", 136, 232.5e-6 * m)
-    create_stripped_detector("diamond_detector", 17, 232.5e-6 * m)
+    create_stripped_detector("diamond_detector", 136, 232.5e-6 * m)
 
     # phys
     sim.physics_manager.physics_list_name = "G4EmLivermorePolarizedPhysics"
