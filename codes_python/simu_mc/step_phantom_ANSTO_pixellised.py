@@ -22,10 +22,10 @@ def create_array_of_elements(n_elements, center_to_center, *, offset_to_center=0
 
 
 if __name__ == "__main__":
-    N_PARTICLES = 1_000_000
-    N_THREADS = 18
+    N_PARTICLES = 10_000
+    N_THREADS = 1
     nb_offset_strips = 0
-    # negative = towards 136, position = towards 1
+    # negative = towards 136, positive = towards 1
     direction_offset = 1
     energy = 106
     slab_material = "SolidHE"
@@ -99,36 +99,35 @@ if __name__ == "__main__":
     diamond_detector.mother = sim.world
     # 136 strips * 0.1725 mm + 135 interstrips of 0.06 mm + 2 sides of diamond of 0.06mm
     # = 31.68 mm of detector width
-    # diamond_detector.size = [31.68 * mm, 3.32 * mm, 150e-6 * m]
-    diamond_detector.size = [4.0125 * mm, 3.32 * mm, 150e-6 * m]
+    diamond_detector.size = [31.68 * mm, 3.32 * mm, 150e-6 * m]
     diamond_detector.material = "diamant_det"
     diamond_detector.color = [0, 1, 1, 1]
 
     # # lateral shift of det to define which strip is facing the mb
-    # lat_shift = (232.5 / 2 + 232.5 * nb_offset_strips) * direction_offset
-    # diamond_detector.translation = [lat_shift * um, 0, 4.13 * m]
-    diamond_detector.translation = [0, 0, 4.13 * m]
+    lat_shift = (232.5 / 2 + 232.5 * nb_offset_strips) * direction_offset
+    diamond_detector.translation = [lat_shift * um, 0, 4.13 * m]
     sim.physics_manager.set_production_cut("diamond_detector", "all", 1 * um)
 
     # volume containing all the strips for dose actor retrievements
     dose_actor_vol = sim.add_volume("Box", "dose_actor_vol")
     dose_actor_vol.mother = "diamond_detector"
     # 136 strips of 172.5 um and 135 interstrips of 60 um
-    # dose_actor_vol.size = [31.56 * mm, 3.32 * mm, 150e-6 * m]
-    dose_actor_vol.size = [3.8925 * mm, 3.2 * mm, 150e-6 * m]
+    dose_actor_vol.size = [31.56 * mm, 3.32 * mm, 150e-6 * m]
     dose_actor_vol.material = "diamant_det"
     dose_actor_vol.color = [1, 0, 0, 1]
 
     # dose actor
     dose = sim.add_actor("DoseActor", "dose_detector")
     dose.mother = "dose_actor_vol"
-    dose.output = f"output/{slab_depth}cm_{slab_material}_detector.mhd"
+    dose.output = os.path.join(
+        os.path.join(os.path.dirname(__file__), "output"),
+        f"{slab_depth}cm_{slab_material}_detector.mhd",
+    )
     dose.square = False
     dose.dose = False
     # pixel width = 0.0075 mm => 23 pixels per strips and 8 pixels per interstrip space
     # 23 * 136 strips + 8 * 135 interstrips = 4208 pixels
-    # dose.size = [4208, 1, 1]
-    dose.size = [519, 1, 1]
+    dose.size = [4208, 1, 1]
     dose.spacing = [0.0075 * mm, 3.2 * mm, 150 * um]
 
     # sets production cut
