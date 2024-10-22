@@ -51,6 +51,27 @@ Uranium:    S= U   ; Z= 92. ; A= 238.03  g/mole
 Vacuum: d=0.000001 mg/cm3 ; n=1 
 	+el: name=Hydrogen ; n=1
 
+Copper: d=8.92 g/cm3 ; n=1 ; state=solid
+        +el: name=auto ; n=1
+
+TungstenCarbid:  d=15.63 g/cm3 ; n=2 ; state=Solid
+        +el: name=Tungsten ; n=1
+        +el: name=Carbon ; n=1
+
+VC: d=5.77 g/cm3 ; n=2 ; state=Solid
+        +el: name=Vandium ; n=1
+        +el: name=Carbon ; n=1
+
+Cr3C2: d=6.68 g/cm3 ; n=2 ; state=Solid
+        +el: name=Carbon ; n=2
+        +el: name=Chromium ; n=3
+
+msc_material: d=14.08 g/cm3 ; n=4 ; state=Solid
+        +mat: name=TungstenCarbid ; f=0.868
+        +el: name=Cobalt ; f=0.12
+        +mat: name=VC ; f=0.0031
+        +mat: name=Cr3C2 ; f=0.0089
+
 RW3: d=1.045 g/cm3 ; n=4;  state=solid 
         +el: name=Hydrogen;   f=0.0759
         +el: name=Carbon;     f=0.9041
