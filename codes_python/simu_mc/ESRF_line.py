@@ -1,10 +1,7 @@
 import os
-import sys
 import opengate as gate
 import numpy as np
 import time
-from opengate.geometry import volumes
-from opengate.geometry.volumes import intersect_volumes
 from decimal import Decimal
 
 # units
@@ -24,8 +21,8 @@ def create_array_of_elements(n_elements, center_to_center, *, offset_to_center=0
     return np.linspace(-max_dist / 2, max_dist / 2, n_elements) + offset_to_center
 
 
-def create_mlc_slits(mlc_vol, n_slits, center_to_center, *, offset_to_center=0):
-    """Function creating a the slits in MLC volume"""
+def create_msc_slits(msc_vol, n_slits, center_to_center, *, offset_to_center=0):
+    """Function creating a the slits in MSC volume"""
 
     # gets positions of each strips center
     center_positions = create_array_of_elements(
@@ -34,17 +31,16 @@ def create_mlc_slits(mlc_vol, n_slits, center_to_center, *, offset_to_center=0):
 
     for slit_num, pos in enumerate(center_positions):
         slit = sim.add_volume("BoxVolume", f"slit {slit_num}")
-        slit.mother = mlc_vol
-        slit.size = [50 * um, 3 * mm, 8 * mm]
+        slit.mother = msc_vol
+        slit.size = [50 * um, 3 * mm, 8.1 * mm]
         slit.material = "G4_AIR"
         slit.translation = [pos, 0, 0 * m]
         sim.physics_manager.set_production_cut(f"slit {slit_num}", "all", 10 * um)
 
 
 if __name__ == "__main__":
-    N_PARTICLES = 1_000_000
-    N_THREADS = 18
-    energy = 123
+    N_PARTICLES = 100_000
+    N_THREADS = 1
     physics_list = "G4EmLivermorePolarizedPhysics"
     phsp = True
     visu = False
@@ -83,12 +79,19 @@ if __name__ == "__main__":
     source.position.type = "point"
     source.position.translation = [0, 0, 21 * m]
     source.direction.type = "iso"
+    # theta chosen to have a beam width of one microbeam width at MSC
     source.direction.theta = [0 * deg, 3.52e-5 * deg]
     source.direction.phi = [0 * deg, 360 * deg]
-    source.energy.type = "mono"
-    source.energy.mono = energy * keV
+    source.energy.type = "spectrum_lines"
+    spectrum = np.loadtxt(
+        os.path.join(os.path.dirname(__file__), "data/ESRF_clinic_spec.txt"),
+        skiprows=1,
+        delimiter="\t",
+    )
+    source.energy.spectrum_energy = spectrum[:, 0] * keV
+    source.energy.spectrum_weight = spectrum[:, 1]
 
-    # Primary collimator
+    # Primary collimator added to have a rectangular beam (otherwise conical)
     prim_col = sim.add_volume("Box", "primary_collimator")
     prim_col.mother = "vacuum_sec"
     prim_col.size = [5 * cm, 5 * cm, 1 * cm]
@@ -99,27 +102,21 @@ if __name__ == "__main__":
 
     # Primary slit in primary collimator, define beam width and height
     prim_slit = sim.add_volume("Box", "prim_slit")
-    # one microbeam width aperture
+    # slit width chosen to have a beam width of one microbeam width at MSC
     prim_slit.size = [36 * um, 795 * um, 1.1 * cm]
     prim_slit.material = "G4_AIR"
     prim_slit.mother = "primary_collimator"
     prim_slit.translation = [0, 0, 0]
     sim.physics_manager.set_production_cut("prim_slit", "all", 10 * um)
 
-    # MLC
-    mlc = sim.add_volume("Box", "mlc")
-    mlc.mother = "world"
-    mlc.size = [8 * cm, 1 * cm, 8 * mm]
-    mlc.translation = [0, 0, -19.7 * m]
-    mlc.material = "mlc_material"
-    create_mlc_slits("mlc", 125, 400 * um, offset_to_center=0)
-    sim.physics_manager.set_production_cut("mlc", "all", 1 * mm)
-
-    # # kill actors
-    # kill_actor_pc = sim.add_actor("KillActor", "kill_actor_pc")
-    # kill_actor_pc.attached_to = "primary_collimator"
-    # kill_actor_mlc = sim.add_actor("KillActor", "kill_actor_mlc")
-    # kill_actor_mlc.attached_to = "mlc"
+    # MSC
+    msc = sim.add_volume("Box", "msc")
+    msc.mother = "world"
+    msc.size = [8 * cm, 1 * cm, 8 * mm]
+    msc.translation = [0, 0, -19.7 * m]
+    msc.material = "msc_material"
+    create_msc_slits("msc", 125, 400 * um, offset_to_center=0)
+    sim.physics_manager.set_production_cut("msc", "all", 1 * mm)
 
     # virtual plane for phase space
     if phsp:
@@ -141,7 +138,7 @@ if __name__ == "__main__":
         ]
         phsp_actor.output = os.path.join(
             os.path.dirname(__file__),
-            f"output/phsp_esrf_{energy}kev_{Decimal(N_PARTICLES):.3E}_events.root",
+            f"output/phsp_esrf_line_{Decimal(N_PARTICLES):.3E}_events.root",
         )
         phsp_actor.debug = False
 
