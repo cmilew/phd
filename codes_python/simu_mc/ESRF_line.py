@@ -1,8 +1,12 @@
 import os
+import sys
 import opengate as gate
 import numpy as np
 import time
+from opengate.geometry import volumes
+from opengate.geometry.volumes import intersect_volumes
 from decimal import Decimal
+
 
 # units
 m = gate.g4_units.m
@@ -11,6 +15,7 @@ mm = gate.g4_units.mm
 um = gate.g4_units.um
 nm = gate.g4_units.nm
 keV = gate.g4_units.keV
+MeV = gate.g4_units.MeV
 deg = gate.g4_units.deg
 
 
@@ -39,11 +44,11 @@ def create_msc_slits(msc_vol, n_slits, center_to_center, *, offset_to_center=0):
 
 
 if __name__ == "__main__":
-    N_PARTICLES = 100_000
+    N_PARTICLES = 10
     N_THREADS = 1
     physics_list = "G4EmLivermorePolarizedPhysics"
     phsp = True
-    visu = False
+    visu = True
 
     # create the simulation
     sim = gate.Simulation()
@@ -88,7 +93,7 @@ if __name__ == "__main__":
         skiprows=1,
         delimiter="\t",
     )
-    source.energy.spectrum_energy = spectrum[:, 0] * keV
+    source.energy.spectrum_energy = spectrum[:, 0] * MeV
     source.energy.spectrum_weight = spectrum[:, 1]
 
     # Primary collimator added to have a rectangular beam (otherwise conical)
