@@ -4,7 +4,9 @@ import opengate as gate
 import numpy as np
 import time
 from opengate.geometry import volumes
-from opengate.geometry.volumes import intersect_volumes
+from box import Box
+from opengate.geometry.volumes import subtract_volumes, unite_volumes
+import math
 from decimal import Decimal
 
 
@@ -14,41 +16,164 @@ cm = gate.g4_units.cm
 mm = gate.g4_units.mm
 um = gate.g4_units.um
 nm = gate.g4_units.nm
+eV = gate.g4_units.eV
 keV = gate.g4_units.keV
 MeV = gate.g4_units.MeV
 deg = gate.g4_units.deg
 
 
+def create_box_vol(
+    box_name, box_mother, box_size, box_translation, box_material, box_color
+):
+    """Function creating a box volume and setting its properties"""
+
+    box = volumes.BoxVolume(name=box_name)
+    box.mother = box_mother
+    box.size = box_size
+    box.translation = box_translation
+    box.material = box_material
+    box.color = box_color
+
+    return box
+
+
+def create_collimator(
+    mother_volume,
+    col_box_name,
+    col_name,
+    slit_name,
+    material,
+    translation,
+    box_dim,
+    slit_dim,
+    cut_col,
+    cut_slit,
+):
+    """Function creating a collimator by a subtraction of a slit to a box, adds
+    collimator and its slit to simulation and set their cuts"""
+
+    # Create box
+    col_box = create_box_vol(
+        col_box_name, mother_volume, box_dim, translation, material, [1, 0, 0, 1]
+    )
+
+    # Create slit
+    slit = create_box_vol(
+        slit_name, col_box_name, slit_dim, [0, 0, 0], "G4_AIR", [0, 0, 0, 0]
+    )
+
+    # Create collimator = box - slit
+    col = subtract_volumes(col_box, slit, new_name=col_name)
+
+    # Add volumes to simulation
+    # Mandatory to col box to add slit to the simulation (and slit needed to adjust cut)
+    sim.add_volume(col_box)
+    sim.add_volume(col)
+    sim.add_volume(slit)
+    sim.physics_manager.set_production_cut(col_name, "all", cut_col)
+    sim.physics_manager.set_production_cut(slit_name, "all", cut_slit)
+
+
 def create_array_of_elements(n_elements, center_to_center, *, offset_to_center=0):
-    """Function creating an array of elements separated by a center_to_center distance and centered on 0 by default
-    on the x-axis"""
+    """Function creating an array of elements separated by a center_to_center distance
+    and centered on 0 by default on the x-axis"""
+
     max_dist = center_to_center * (n_elements - 1)
     return np.linspace(-max_dist / 2, max_dist / 2, n_elements) + offset_to_center
 
 
-def create_msc_slits(msc_vol, n_slits, center_to_center, *, offset_to_center=0):
-    """Function creating a the slits in MSC volume"""
+def create_msc(
+    d_source_msc,
+    n_slits,
+    center_to_center,
+    cut_msc,
+    cut_slits_msc,
+    *,
+    offset_to_center=0,
+):
+    """Function creating the MSC as a subtraction of the slits to a box, unite every
+    slit of MSC, adds MSC and united slits to simulation and set their cuts"""
 
-    # gets positions of each strips center
+    # Create MSC box
+    msc_box = create_box_vol(
+        "msc_box",
+        "world",
+        [8 * cm, 1 * cm, 8 * mm],
+        [0, 0, d_source_msc * m],
+        "msc_material",
+        [1, 0, 0, 1],
+    )
+
+    # Gets positions of each slit center
     center_positions = create_array_of_elements(
         n_slits, center_to_center, offset_to_center=offset_to_center
     )
+    msc = msc_box
 
+    # Initialize msc_slits volume with the middle slit (= slit 63 as they are 125 slits)
+    msc_slits = create_box_vol(
+        "msc_slit_0",
+        "msc_box",
+        [50 * um, 3 * mm, 8.1 * mm],
+        [center_positions[len(center_positions) // 2], 0, 0 * m],
+        "G4_AIR",
+        [0, 0, 0, 0],
+    )
+
+    # Subtract slits to MSC box and unite them
     for slit_num, pos in enumerate(center_positions):
-        slit = sim.add_volume("BoxVolume", f"slit {slit_num}")
-        slit.mother = msc_vol
+        slit = volumes.BoxVolume(name=f"slit {slit_num}")
+        slit.mother = msc_box
         slit.size = [50 * um, 3 * mm, 8.1 * mm]
         slit.material = "G4_AIR"
-        slit.translation = [pos, 0, 0 * m]
-        sim.physics_manager.set_production_cut(f"slit {slit_num}", "all", 10 * um)
+        msc = subtract_volumes(msc, slit, translation=[pos, 0, 0 * m], new_name="msc")
+        msc_slits = unite_volumes(
+            msc_slits, slit, translation=[pos, 0, 0 * m], new_name="msc_slits"
+        )
+
+    sim.add_volume(msc_box)
+    sim.add_volume(msc)
+    sim.add_volume(msc_slits)
+    sim.physics_manager.set_production_cut("msc", "all", cut_msc)
+    sim.physics_manager.set_production_cut("msc", "all", cut_slits_msc)
 
 
 if __name__ == "__main__":
-    N_PARTICLES = 10
-    N_THREADS = 1
+    # Simulation parameters
+    N_PARTICLES = 50_000_000_000
+    N_THREADS = 62
+    sleep_time = False  # only for parallel simulation on CC
     physics_list = "G4EmLivermorePolarizedPhysics"
     phsp = True
-    visu = True
+    visu = False
+    kill_act = False
+
+    # Beam dimensions defined at sec col
+    beam_width = 35e-3 * m
+    beam_height = 795e-6 * m
+
+    # Dist between source and collimators
+    d_source_prim_col = 29.3 * m
+    d_source_sec_col = 40.2 * m
+    d_source_msc = 40.7 * m
+
+    # Beam divergence calculated so that beam width = half diagonal of sec col slit + margin
+    # (to cover the whole slit)
+    margin = 10e-6 * m
+    hald_diag_sec_col = (1 / 2) * np.sqrt(beam_width**2 + beam_height**2)
+    beam_div = (
+        np.arctan((hald_diag_sec_col + margin) / d_source_sec_col)
+        * (180 / math.pi)
+        * deg
+    )
+
+    # Cuts
+    prim_col_cut = 1 * m
+    prim_slit_cut = 1 * mm
+    sec_col_cut = 1 * mm
+    sec_slit_cut = 1 * mm
+    msc_cut = 10 * um  # short cut to be precise in MSC leaves
+    msc_slits_cut = 10 * um
 
     # create the simulation
     sim = gate.Simulation()
@@ -84,44 +209,60 @@ if __name__ == "__main__":
     source.position.type = "point"
     source.position.translation = [0, 0, 21 * m]
     source.direction.type = "iso"
-    # theta chosen to have a beam width of one microbeam width at MSC
-    source.direction.theta = [0 * deg, 3.52e-5 * deg]
+    source.direction.theta = [0 * deg, beam_div * deg]
     source.direction.phi = [0 * deg, 360 * deg]
     source.energy.type = "spectrum_lines"
     spectrum = np.loadtxt(
-        os.path.join(os.path.dirname(__file__), "data/ESRF_clinic_spec.txt"),
+        os.path.join(os.path.dirname(__file__), "data/ESRF_clinic_spec_maxi_bins.txt"),
         skiprows=1,
         delimiter="\t",
     )
-    source.energy.spectrum_energy = spectrum[:, 0] * MeV
+    source.energy.spectrum_energy = spectrum[:, 0] * eV
     source.energy.spectrum_weight = spectrum[:, 1]
 
-    # Primary collimator added to have a rectangular beam (otherwise conical)
-    prim_col = sim.add_volume("Box", "primary_collimator")
-    prim_col.mother = "vacuum_sec"
-    prim_col.size = [5 * cm, 5 * cm, 1 * cm]
-    prim_col.translation = [0, 0, -10.75 * m]
-    prim_col.material = "Copper"
-    prim_col.color = [1, 0, 0, 1]
-    sim.physics_manager.set_production_cut("primary_collimator", "all", 1 * m)
+    # Primary collimator
+    prim_col_width = (beam_width + 2 * margin) * (d_source_prim_col / d_source_sec_col)
+    prim_col_height = (beam_height + 2 * margin) * (
+        d_source_prim_col / d_source_sec_col
+    )
+    create_collimator(
+        "vacuum_sec",
+        "pc_box",
+        "primary_collimator",
+        "primary_slit",
+        "Copper",
+        [0, 0, -10.75 * m],
+        [5 * cm, 5 * cm, 1 * cm],
+        [prim_col_width, prim_col_height, 1.1 * cm],
+        prim_col_cut,
+        prim_slit_cut,
+    )
 
-    # Primary slit in primary collimator, define beam width and height
-    prim_slit = sim.add_volume("Box", "prim_slit")
-    # slit width chosen to have a beam width of one microbeam width at MSC
-    prim_slit.size = [36 * um, 795 * um, 1.1 * cm]
-    prim_slit.material = "G4_AIR"
-    prim_slit.mother = "primary_collimator"
-    prim_slit.translation = [0, 0, 0]
-    sim.physics_manager.set_production_cut("prim_slit", "all", 10 * um)
+    # Secondary collimator
+    create_collimator(
+        "world",
+        "sc_box",
+        "secondary_collimator",
+        "secondary_slit",
+        "msc_material",
+        [0, 0, -19.2 * m],
+        [8 * cm, 1 * cm, 8 * mm],
+        [beam_width, beam_height, 8.1 * mm],
+        sec_col_cut,
+        sec_slit_cut,
+    )
 
-    # MSC
-    msc = sim.add_volume("Box", "msc")
-    msc.mother = "world"
-    msc.size = [8 * cm, 1 * cm, 8 * mm]
-    msc.translation = [0, 0, -19.7 * m]
-    msc.material = "msc_material"
-    create_msc_slits("msc", 125, 400 * um, offset_to_center=0)
-    sim.physics_manager.set_production_cut("msc", "all", 1 * mm)
+    # Creates MSC
+    msc = create_msc(-19.7, 125, 400 * um, msc_cut, msc_slits_cut, offset_to_center=0)
+
+    # kill actors
+    if kill_act:
+        kill_actor_pc = sim.add_actor("KillActor", "kill_actor_pc")
+        kill_actor_pc.mother = "primary_collimator"
+        kill_actor_sc = sim.add_actor("KillActor", "kill_actor_sc")
+        kill_actor_sc.mother = "secondary_collimator"
+        kill_actor_mlc = sim.add_actor("KillActor", "kill_actor_msc")
+        kill_actor_mlc.mother = "msc"
 
     # virtual plane for phase space
     if phsp:
@@ -140,6 +281,7 @@ if __name__ == "__main__":
             "Weight",
             "PrePositionLocal",
             "PreDirectionLocal",
+            "ParticleName",
         ]
         phsp_actor.output = os.path.join(
             os.path.dirname(__file__),
@@ -159,8 +301,9 @@ if __name__ == "__main__":
 
     # ---------------------------------------------------------------------
     # start simulation
-    # rd_time = np.random.randint(0, 120, 1)[0]
-    # time.sleep(rd_time)
+    if sleep_time:
+        rd_time = np.random.randint(0, 120, 1)[0]
+        time.sleep(rd_time)
     sim.run(start_new_process=False)
 
     stats = sim.output.get_actor("stats")
