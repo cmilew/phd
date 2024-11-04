@@ -4,6 +4,7 @@ import numpy as np
 import time
 from decimal import Decimal
 import uproot
+import click
 
 # units
 m = gate.g4_units.m
@@ -16,37 +17,45 @@ deg = gate.g4_units.deg
 
 
 def create_box_vol(
-    box_name, box_mother, box_size, box_translation, box_material, box_color, box_cut
+    simulation,
+    box_name,
+    box_mother,
+    box_size,
+    box_translation,
+    box_material,
+    box_color,
+    box_cut,
 ):
     """Function creating a box volume and setting its properties"""
 
-    box = sim.add_volume("Box", box_name)
+    box = simulation.add_volume("Box", box_name)
     box.mother = box_mother
     box.size = box_size
     box.translation = box_translation
     box.material = box_material
     box.color = box_color
-    sim.physics_manager.set_production_cut(box_name, "all", box_cut)
+    simulation.physics_manager.set_production_cut(box_name, "all", box_cut)
 
 
-if __name__ == "__main__":
+def run_simulation(n_part):
     # simulation parameters
-    N_PARTICLES = 10_000
+    N_PARTICLES = n_part
     N_THREADS = 1
     visu = False
     sleep_time = False
-    phsp_filename = "phsp_esrf_line_1.000E+4_events.root"
+    phsp_filename = "phsp_esrf_line_1.000E+5_events.root"
+    physics_list = "G4EmLivermorePolarizedPhysics"
 
+    # setup parameters
     nb_offset_strips = 0
     # negative = towards 136, positive = towards 1
     direction_offset = 1
     slab_material = "RW3"
     slab_w = 16 * cm
     slab_h = 2 * cm
-    slab_d = 3 * cm
+    slab_d = 0 * cm
     cut_slab = 1 * mm
     cut_detector = 10 * um
-    physics_list = "G4EmLivermorePolarizedPhysics"
 
     # create the simulation
     sim = gate.Simulation()
@@ -67,7 +76,8 @@ if __name__ == "__main__":
     sim.physics_manager.set_production_cut("world", "all", 1 * m)
 
     # phsp plane
-    plane = create_box_vol(
+    create_box_vol(
+        sim,
         "phsp_plane",
         "world",
         [20 * cm, 10 * cm, 1 * um],
@@ -100,6 +110,7 @@ if __name__ == "__main__":
     # slab definition
     if slab_d != 0:
         create_box_vol(
+            sim,
             "rw3_slab",
             "world",
             [slab_w, slab_h, slab_d],
@@ -110,13 +121,13 @@ if __name__ == "__main__":
         )
 
     # Diamond detector definition
-
     # lateral shift of det to define which strip is facing the mb
     lat_shift = (232.5 / 2 + 232.5 * nb_offset_strips) * direction_offset
 
     # 136 strips * 0.1725 mm + 135 interstrips of 0.06 mm + 2 sides of diamond of 0.06mm
     # = 31.68 mm of detector width
-    diamond_detector = create_box_vol(
+    create_box_vol(
+        sim,
         "diamond_detector",
         "world",
         [31.68, 3.32 * mm, 150e-6 * m],
@@ -128,7 +139,8 @@ if __name__ == "__main__":
 
     # volume containing all the strips for dose actor retrievements
     # 136 strips of 172.5 um and 135 interstrips of 60 um = 31.56 mm
-    dose_actor_vol = create_box_vol(
+    create_box_vol(
+        sim,
         "dose_actor_vol",
         "diamond_detector",
         [31.56 * mm, 3.2 * mm, 150e-6 * m],
@@ -172,3 +184,13 @@ if __name__ == "__main__":
 
     stats = sim.output.get_actor("stats")
     print(stats)
+
+
+@click.command()
+@click.option("--n_part", default=1, help="Number of particle to simulate")
+def main(n_part):
+    run_simulation(n_part)
+
+
+if __name__ == "__main__":
+    main()
