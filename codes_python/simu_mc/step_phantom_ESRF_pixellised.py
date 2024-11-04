@@ -31,18 +31,19 @@ def create_box_vol(
 
 if __name__ == "__main__":
     # simulation parameters
-    N_PARTICLES = 1000
+    N_PARTICLES = 10_000
     N_THREADS = 1
     visu = False
+    sleep_time = False
     phsp_filename = "phsp_esrf_line_1.000E+4_events.root"
 
     nb_offset_strips = 0
     # negative = towards 136, positive = towards 1
     direction_offset = 1
     slab_material = "RW3"
-    slab_d = 3
     slab_w = 16 * cm
     slab_h = 2 * cm
+    slab_d = 3 * cm
     cut_slab = 1 * mm
     cut_detector = 10 * um
     physics_list = "G4EmLivermorePolarizedPhysics"
@@ -101,26 +102,24 @@ if __name__ == "__main__":
         create_box_vol(
             "rw3_slab",
             "world",
-            [slab_w * cm, slab_h * cm, slab_d * cm],
+            [slab_w, slab_h, slab_d],
             [0, 0, 2.5 * m],
             slab_material,
             [0, 0, 1, 1],
             cut_slab,
         )
 
-    # diamond detector definition
+    # Diamond detector definition
 
     # lateral shift of det to define which strip is facing the mb
     lat_shift = (232.5 / 2 + 232.5 * nb_offset_strips) * direction_offset
 
     # 136 strips * 0.1725 mm + 135 interstrips of 0.06 mm + 2 sides of diamond of 0.06mm
     # = 31.68 mm of detector width
-    det_width = 31.68 * mm
-
     diamond_detector = create_box_vol(
         "diamond_detector",
         "world",
-        [det_width, 3.32 * mm, 150e-6 * m],
+        [31.68, 3.32 * mm, 150e-6 * m],
         [lat_shift * um, 0, -2.8 * m],
         "diamant_det",
         [0, 1, 1, 1],
@@ -132,7 +131,7 @@ if __name__ == "__main__":
     dose_actor_vol = create_box_vol(
         "dose_actor_vol",
         "diamond_detector",
-        [31.56 * mm, 3.32 * mm, 150e-6 * m],
+        [31.56 * mm, 3.2 * mm, 150e-6 * m],
         [0, 0, 0],
         "diamant_det",
         [1, 0, 0, 1],
