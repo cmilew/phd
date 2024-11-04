@@ -1,25 +1,12 @@
 import os
-import sys
 import opengate as gate
 import numpy as np
 import time
 from opengate.geometry import volumes
-from box import Box
 from opengate.geometry.volumes import subtract_volumes, unite_volumes
 import math
 from decimal import Decimal
-
-
-# units
-m = gate.g4_units.m
-cm = gate.g4_units.cm
-mm = gate.g4_units.mm
-um = gate.g4_units.um
-nm = gate.g4_units.nm
-eV = gate.g4_units.eV
-keV = gate.g4_units.keV
-MeV = gate.g4_units.MeV
-deg = gate.g4_units.deg
+import click
 
 
 def create_box_vol(
@@ -38,6 +25,7 @@ def create_box_vol(
 
 
 def create_collimator(
+    simulation,
     mother_volume,
     col_box_name,
     col_name,
@@ -66,12 +54,12 @@ def create_collimator(
     col = subtract_volumes(col_box, slit, new_name=col_name)
 
     # Add volumes to simulation
-    # Mandatory to col box to add slit to the simulation (and slit needed to adjust cut)
-    sim.add_volume(col_box)
-    sim.add_volume(col)
-    sim.add_volume(slit)
-    sim.physics_manager.set_production_cut(col_name, "all", cut_col)
-    sim.physics_manager.set_production_cut(slit_name, "all", cut_slit)
+    # Mandatory to add col box to add slit to the simulation (and slit needed to adjust cut)
+    simulation.add_volume(col_box)
+    simulation.add_volume(col)
+    simulation.add_volume(slit)
+    simulation.physics_manager.set_production_cut(col_name, "all", cut_col)
+    simulation.physics_manager.set_production_cut(slit_name, "all", cut_slit)
 
 
 def create_array_of_elements(n_elements, center_to_center, *, offset_to_center=0):
@@ -83,6 +71,7 @@ def create_array_of_elements(n_elements, center_to_center, *, offset_to_center=0
 
 
 def create_msc(
+    simulation,
     d_source_msc,
     n_slits,
     center_to_center,
@@ -94,12 +83,15 @@ def create_msc(
     """Function creating the MSC as a subtraction of the slits to a box, unite every
     slit of MSC, adds MSC and united slits to simulation and set their cuts"""
 
+    m = gate.g4_units.m
+    mm = gate.g4_units.mm
+
     # Create MSC box
     msc_box = create_box_vol(
         "msc_box",
         "world",
-        [8 * cm, 1 * cm, 8 * mm],
-        [0, 0, d_source_msc * m],
+        [80 * mm, 10 * mm, 8 * mm],
+        [0, 0, d_source_msc],
         "msc_material",
         [1, 0, 0, 1],
     )
@@ -110,11 +102,12 @@ def create_msc(
     )
     msc = msc_box
 
-    # Initialize msc_slits volume with the middle slit (= slit 63 as they are 125 slits)
+    # Initialize msc_slits volume (for unite boolean) with the middle slit
+    # (= slit 63 as they are 125 slits)
     msc_slits = create_box_vol(
         "msc_slit_0",
         "msc_box",
-        [50 * um, 3 * mm, 8.1 * mm],
+        [50e-3 * mm, 3 * mm, 8.1 * mm],
         [center_positions[len(center_positions) // 2], 0, 0 * m],
         "G4_AIR",
         [0, 0, 0, 0],
@@ -124,24 +117,33 @@ def create_msc(
     for slit_num, pos in enumerate(center_positions):
         slit = volumes.BoxVolume(name=f"slit {slit_num}")
         slit.mother = msc_box
-        slit.size = [50 * um, 3 * mm, 8.1 * mm]
+        slit.size = [50e-3 * mm, 3 * mm, 8.1 * mm]
         slit.material = "G4_AIR"
         msc = subtract_volumes(msc, slit, translation=[pos, 0, 0 * m], new_name="msc")
         msc_slits = unite_volumes(
             msc_slits, slit, translation=[pos, 0, 0 * m], new_name="msc_slits"
         )
 
-    sim.add_volume(msc_box)
-    sim.add_volume(msc)
-    sim.add_volume(msc_slits)
-    sim.physics_manager.set_production_cut("msc", "all", cut_msc)
-    sim.physics_manager.set_production_cut("msc", "all", cut_slits_msc)
+    simulation.add_volume(msc_box)
+    simulation.add_volume(msc)
+    simulation.add_volume(msc_slits)
+    simulation.physics_manager.set_production_cut("msc", "all", cut_msc)
+    simulation.physics_manager.set_production_cut("msc", "all", cut_slits_msc)
 
 
-if __name__ == "__main__":
+def run_simulation(n_part):
+    # units
+    m = gate.g4_units.m
+    cm = gate.g4_units.cm
+    mm = gate.g4_units.mm
+    um = gate.g4_units.um
+    eV = gate.g4_units.eV
+    keV = gate.g4_units.keV
+    deg = gate.g4_units.deg
+
     # Simulation parameters
-    N_PARTICLES = 50_000_000_000
-    N_THREADS = 62
+    N_PARTICLES = n_part
+    N_THREADS = 18
     sleep_time = False  # only for parallel simulation on CC
     physics_list = "G4EmLivermorePolarizedPhysics"
     phsp = True
@@ -149,16 +151,16 @@ if __name__ == "__main__":
     kill_act = False
 
     # Beam dimensions defined at sec col
-    beam_width = 35e-3 * m
+    # beam_width = 35e-3 * m  # beam width for step phantom setup
+    beam_width = 60e-6 * m  # 1 mb
     beam_height = 795e-6 * m
 
     # Dist between source and collimators
     d_source_prim_col = 29.3 * m
     d_source_sec_col = 40.2 * m
-    d_source_msc = 40.7 * m
 
-    # Beam divergence calculated so that beam width = half diagonal of sec col slit + margin
-    # (to cover the whole slit)
+    # Beam divergence calc so that beam width = half diagonal of sec col slit + margin
+    # (to cover the whole slit of sec col)
     margin = 10e-6 * m
     hald_diag_sec_col = (1 / 2) * np.sqrt(beam_width**2 + beam_height**2)
     beam_div = (
@@ -209,23 +211,27 @@ if __name__ == "__main__":
     source.position.type = "point"
     source.position.translation = [0, 0, 21 * m]
     source.direction.type = "iso"
-    source.direction.theta = [0 * deg, beam_div * deg]
+    source.direction.theta = [0 * deg, beam_div]
     source.direction.phi = [0 * deg, 360 * deg]
-    source.energy.type = "spectrum_lines"
-    spectrum = np.loadtxt(
-        os.path.join(os.path.dirname(__file__), "data/ESRF_clinic_spec_maxi_bins.txt"),
-        skiprows=1,
-        delimiter="\t",
-    )
-    source.energy.spectrum_energy = spectrum[:, 0] * eV
-    source.energy.spectrum_weight = spectrum[:, 1]
+    source.energy.type = "mono"
+    source.energy.mono = 123 * keV
+    # source.energy.type = "spectrum_lines"
+    # spectrum = np.loadtxt(
+    #     os.path.join(os.path.dirname(__file__), "data/ESRF_clinic_spec_maxi_bins.txt"),
+    #     skiprows=1,
+    #     delimiter="\t",
+    # )
+    # source.energy.spectrum_energy = spectrum[:, 0] * eV
+    # source.energy.spectrum_weight = spectrum[:, 1]
 
     # Primary collimator
+    # prim col width chosen to cover whole sec col width + margin on both sides
     prim_col_width = (beam_width + 2 * margin) * (d_source_prim_col / d_source_sec_col)
     prim_col_height = (beam_height + 2 * margin) * (
         d_source_prim_col / d_source_sec_col
     )
     create_collimator(
+        sim,
         "vacuum_sec",
         "pc_box",
         "primary_collimator",
@@ -240,6 +246,7 @@ if __name__ == "__main__":
 
     # Secondary collimator
     create_collimator(
+        sim,
         "world",
         "sc_box",
         "secondary_collimator",
@@ -253,7 +260,9 @@ if __name__ == "__main__":
     )
 
     # Creates MSC
-    msc = create_msc(-19.7, 125, 400 * um, msc_cut, msc_slits_cut, offset_to_center=0)
+    create_msc(
+        sim, -19.7 * m, 125, 400 * um, msc_cut, msc_slits_cut, offset_to_center=0
+    )
 
     # kill actors
     if kill_act:
@@ -308,3 +317,13 @@ if __name__ == "__main__":
 
     stats = sim.output.get_actor("stats")
     print(stats)
+
+
+@click.command()
+@click.option("--n_part", default=1, help="Number of particle to simulate")
+def main(n_part):
+    run_simulation(n_part)
+
+
+if __name__ == "__main__":
+    main()
