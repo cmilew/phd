@@ -23,14 +23,10 @@ import os
 #             f"Std {np.std(file['hits_central_strip;1']['TotalEnergyDeposit'].array(library='np'))}"
 #         )
 
-rw3_thickness = 1
-strip_number = 13
+file_name = "phsp_esrf_line_1.000E+2_events"
 
-path_root_file = os.path.join(
-    os.path.dirname(__file__), f"output/{rw3_thickness}cm_rw3_strip_{strip_number}.root"
-)
+path_root_file = os.path.join(os.path.dirname(__file__), f"output/{file_name}.root")
 with uproot.open(path_root_file) as file:
-    hits_name = f"hits_{strip_number};1"
-    print(f"Entries {file[hits_name]['TotalEnergyDeposit'].num_entries}")
-    print(f"Edep {np.sum(file[hits_name]['TotalEnergyDeposit'].array(library='np'))}")
-    print(f"Std {np.std(file[hits_name]['TotalEnergyDeposit'].array(library='np'))}")
+    print(f"Entries {file['PhaseSpace;1']['KineticEnergy'].num_entries}")
+    print(f"Edep {np.mean(file['PhaseSpace;1']['KineticEnergy'].array(library='np'))}")
+    print(f"Std {np.std(file['PhaseSpace;1']['KineticEnergy'].array(library='np'))}")
