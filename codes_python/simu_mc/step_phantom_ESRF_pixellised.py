@@ -2,7 +2,6 @@ import os
 import opengate as gate
 import numpy as np
 import time
-from decimal import Decimal
 import uproot
 import click
 
