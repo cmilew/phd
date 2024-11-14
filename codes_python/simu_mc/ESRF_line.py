@@ -25,7 +25,7 @@ def create_kill_act_vol(
     kill_act_translation,
     kill_act_col,
 ):
-    """Function creating a volume killing any particles touching/crossing it"""
+    """Function creating a box volume killing any particles touching/crossing it"""
 
     create_box_vol(
         simulation,
@@ -41,11 +41,11 @@ def create_kill_act_vol(
 
 
 def create_kill_collim(
-    sim, collim_num, mother_vol, z_translation, slit_width, slit_height, m
+    sim, collim_num, mother_vol, z_translation, slit_width, slit_height, slit_depth, m
 ):
     """Function creating a collimator made of 4 joint blocs (top, bottom left and
-    right) of total dimension (20 cm + slit_width) x (20 cm + slit_height) x 1 um including a slit at the center of 4
-    blocs with given dimensions in meters."""
+    right) of total dimension (20 cm + slit_width) x (20 cm + slit_height) x 1 um
+    including a slit at the center of 4 blocs with given dimensions in meters."""
 
     # top volume of the collimator
     y_top_vol = 0.05 * m + slit_height / 2
@@ -54,7 +54,7 @@ def create_kill_collim(
         sim,
         f"top_vol_collim_{collim_num}",
         mother_vol,
-        [width_top_vol, 0.1 * m, 1e-6 * m],
+        [width_top_vol, 0.1 * m, slit_depth],
         [0, y_top_vol, z_translation],
         [1, 0, 0, 1],
     )
@@ -67,7 +67,7 @@ def create_kill_collim(
         sim,
         f"left_vol_collim_{collim_num}",
         mother_vol,
-        [0.1 * m, height_side_vol, 1e-6 * m],
+        [0.1 * m, height_side_vol, slit_depth],
         [x_left_stop_vol, y_side_vol, z_translation],
         [1, 0, 0, 1],
     )
@@ -77,7 +77,7 @@ def create_kill_collim(
         sim,
         f"right_vol_collim_{collim_num}",
         mother_vol,
-        [0.1 * m, height_side_vol, 1e-6 * m],
+        [0.1 * m, height_side_vol, slit_depth],
         [-x_left_stop_vol, y_side_vol, z_translation],
         [1, 0, 0, 1],
     )
@@ -88,10 +88,43 @@ def create_kill_collim(
         sim,
         f"bot_vol_collim_{collim_num}",
         mother_vol,
-        [slit_width, 0.1 * m, 1e-6 * m],
+        [slit_width, 0.1 * m, slit_depth],
         [0, y_bot_vol, z_translation],
         [1, 0, 0, 1],
     )
+
+
+def create_array_of_elements(n_elements, center_to_center, *, offset_to_center=0):
+    """Function creating an array of elements separated by a center_to_center distance and centered on 0 by default
+    on the x-axis"""
+    max_dist = center_to_center * (n_elements - 1)
+    return np.linspace(-max_dist / 2, max_dist / 2, n_elements) + offset_to_center
+
+
+def create_msc_leaves(
+    simulation,
+    mother_vol,
+    n_leaves,
+    m,
+    z_translation,
+    center_to_center,
+    *,
+    offset_to_center=0,
+):
+    # gets positions of each strips center
+    center_positions = create_array_of_elements(
+        n_leaves, center_to_center, offset_to_center=offset_to_center
+    )
+
+    for leave_num, pos in enumerate(center_positions):
+        leave = simulation.add_volume("BoxVolume", f"leave_{leave_num}")
+        leave.mother = mother_vol
+        leave.size = [150e-6 * m, 3e-3 * m, 8e-3 * m]
+        leave.material = "Vacuum"
+        leave.translation = [pos, 0, z_translation]
+        leave.color = [0, 0, 1, 1]
+        kill_act = simulation.add_actor("KillActor", f"kill_act_leave_{leave_num}")
+        kill_act.mother = f"leave_{leave_num}"
 
 
 def create_phsp(simulation, phsp_name, phsp_mother, phsp_z_translation, m, phsp_attr):
@@ -123,9 +156,8 @@ def create_phsp(simulation, phsp_name, phsp_mother, phsp_z_translation, m, phsp_
 def run_simulation(n_part):
     # units
     m = gate.g4_units.m
-    um = gate.g4_units.um
     eV = gate.g4_units.eV
-    MeV = gate.g4_units.MeV
+    keV = gate.g4_units.keV
     deg = gate.g4_units.deg
 
     # Simulation parameters
@@ -141,19 +173,14 @@ def run_simulation(n_part):
     beam_height = 795e-6 * m
 
     # Dist between source and collimators
-    world_length = 40.71 * m
-    d_source_prim_col = 29.3 * m
-    d_source_sec_col = 40.2 * m
+    world_length = 41.5 * m
+    d_source_col = 40.2 * m
+    d_source_msc = 40.7 * m
 
-    # Beam divergence calc so that beam width = half diagonal of sec col slit + margin
-    # (to cover the whole slit of sec col)
+    # source radius calculated to emcompass half diagonal of prim col slit + 10 um margin
     margin = 10e-6 * m
-    hald_diag_sec_col = (1 / 2) * np.sqrt(beam_width**2 + beam_height**2)
-    beam_div = (
-        np.arctan((hald_diag_sec_col + margin) / d_source_sec_col)
-        * (180 / math.pi)
-        * deg
-    )
+    source_rad = (1 / 2) * np.sqrt(beam_width**2 + beam_height**2) + margin
+    beam_div = np.arctan(source_rad / d_source_col) * (180 / math.pi) * deg
 
     # create the simulation
     sim = gate.Simulation()
@@ -173,16 +200,35 @@ def run_simulation(n_part):
     sim.world.material = "Vacuum"
     sim.physics_manager.set_production_cut("world", "all", 1 * m)
 
-    # point source defined at wiggler
+    # create target volume for source acceptance angle located just after first collim
+    z_translation_col = world_length / 2 - d_source_col
+    create_box_vol(
+        sim,
+        "target_vol",
+        "world",
+        [beam_width + margin, beam_height + margin, 1e-6 * m],
+        [0, 0, z_translation_col - margin],
+        "Vacuum",
+        [0, 1, 0, 1],
+    )
+
+    # point source definition (point source at wiggler)
     source = sim.add_source("GenericSource", "point_source")
     source.particle = "gamma"
     source.mother = "world"
     source.n = N_PARTICLES / sim.number_of_threads
     source.position.type = "point"
-    source.position.translation = [0, 0, world_length / 2]
+
+    # source parameters
     source.direction.type = "iso"
     source.direction.theta = [0 * deg, beam_div]
     source.direction.phi = [0 * deg, 360 * deg]
+    source.position.translation = [0, 0, world_length / 2]
+    source.direction.acceptance_angle.volumes = ["target_vol"]
+    source.direction.acceptance_angle.intersection_flag = True
+    source.direction.acceptance_angle.skip_policy = "ZeroEnergy"
+    # source.energy.type = "mono"
+    # source.energy.mono = 123 * keV
     source.energy.type = "spectrum_lines"
     spectrum = np.loadtxt(
         os.path.join(os.path.dirname(__file__), "data/ESRF_clinic_spec_maxi_bins.txt"),
@@ -192,50 +238,44 @@ def run_simulation(n_part):
     source.energy.spectrum_energy = spectrum[:, 0] * unit_spec_file
     source.energy.spectrum_weight = spectrum[:, 1]
 
-    ## prim collimator shaping beam and killing all particles touching/crossing it
-
-    # prim col width chosen to cover whole sec col width + margin on both sides
-    prim_col_width = (beam_width + 2 * margin) * (d_source_prim_col / d_source_sec_col)
-    prim_col_height = (beam_height + 2 * margin) * (
-        d_source_prim_col / d_source_sec_col
-    )
-    z_translation_prim_col = world_length / 2 - d_source_prim_col
+    # first collimator shaping beam and killing all particles touching/crossing it
     create_kill_collim(
-        sim,
-        1,
-        "world",
-        z_translation_prim_col,
-        prim_col_width,
-        prim_col_height,
-        m,
+        sim, 1, "world", z_translation_col, beam_width, beam_height, 1e-6 * m, m
     )
+
+    # creates MSC sides bloc (MSC slit width = 125 slits of 50 um + 124 leaves of 150 um)
+    msc_slit_width = (125 * 50e-6 + 124 * 150e-6) * m
+    z_translation_msc = world_length / 2 - d_source_msc
+    create_kill_collim(
+        sim, 3, "world", z_translation_msc, msc_slit_width, 3e-3 * m, 8e-3 * m, m
+    )
+
+    # creates MSC 124 leaves
+    create_msc_leaves(sim, "world", 124, m, z_translation_msc, 200e-6 * m)
 
     create_phsp(
         sim,
         "phsp_test_pre_col",
         "world",
-        world_length / 2 - 0.01 * m,
+        z_translation_col + 0.01 * m,
         m,
         ["KineticEnergy", "PrePositionLocal"],
     )
 
-    # sec collim shaping beam height and width before entering MSC
-    z_translation_sec_col = world_length / 2 - d_source_sec_col
-    create_kill_collim(
+    create_phsp(
         sim,
-        2,
+        "phsp_test_post_col",
         "world",
-        z_translation_sec_col,
-        beam_width,
-        beam_height,
+        z_translation_col - 0.01 * m,
         m,
+        ["KineticEnergy", "PrePositionLocal"],
     )
 
     create_phsp(
         sim,
-        "phsp_test_post_sec_col",
+        "phsp_test_post_msc",
         "world",
-        z_translation_sec_col - 0.01 * m,
+        z_translation_msc - 0.01 * m,
         m,
         ["KineticEnergy", "PrePositionLocal"],
     )
