@@ -19,17 +19,15 @@ def get_strip_edep(edep_array):
     total_pix = len(edep_array_x)
     pixel = 0
 
-    while pixel < len(edep_array_x):
-        print(f"pixel = {pixel}")
-        if pixel % (n_strip_pix + n_interstrip_pix) != 0 or pixel == 0:
-            n_pix_to_sum = n_interstrip_pix
-            print(f"n_pix_to_sum = {n_pix_to_sum}")
+    while pixel < total_pix:
+        print(f"pixel : {pixel}")
+        if pixel + n_strip_pix <= total_pix:
+            print(f"pixel + n_strip_pix : {pixel + n_strip_pix}")
+            strip_edep.append(np.sum(edep_array_x[pixel : pixel + n_strip_pix]))
+            print(f"value added {np.sum(edep_array_x[pixel : pixel + n_strip_pix])}")
         else:
-            n_pix_to_sum = n_strip_pix
-            print(f"n_pix_to_sum = {n_pix_to_sum}")
-            print(f"sum = {np.sum(edep_array_x[pixel : pixel + n_pix_to_sum])}")
-            strip_edep.append(np.sum(edep_array_x[pixel : pixel + n_pix_to_sum]))
-        pixel += n_pix_to_sum
+            break
+        pixel += n_strip_pix + n_interstrip_pix
 
     return np.array(strip_edep)
 
@@ -72,24 +70,24 @@ edep_array = sitk.GetArrayFromImage(edep)
 
 
 array_test = np.zeros((1, 1, 93))  # Initialize with zeros
-array_test[0, 0, 8:31] = 1  # Set the first block of 23 ones
-array_test[0, 0, 39:62] = 1  # Set the second block of 23 ones
-array_test[0, 0, 70:93] = 1  # Set the third block of 23 ones
+array_test[0, 0, 0:23] = 1  # Set the first block of 23 ones
+array_test[0, 0, 31:54] = 1  # Set the second block of 23 ones
+array_test[0, 0, 62:85] = 1  # Set the third block of 23 ones
+array_test[0, 0, 63] = 2
 
+strip_edep = get_strip_edep(array_test)
+print(strip_edep)
 
-strip_edep = get_strip_edep(edep_array)
+# strip_num = range(1, 137)
 
+# if plot_bool:
+#     slab_thickness = int(slab_thickness)
+#     plt.bar(strip_num, strip_edep)
+#     plt.xlabel("Strip number")
+#     plt.ylabel("Edep (MeV)")
+#     plt.title(f"Edep measured by strips for mono energy 123keV beam ESRF")
+#     plt.show()
 
-strip_num = range(1, 137)
-
-if plot_bool:
-    slab_thickness = int(slab_thickness)
-    plt.bar(strip_num, strip_edep)
-    plt.xlabel("Strip number")
-    plt.ylabel("Edep (MeV)")
-    plt.title(f"Edep measured by strips for mono energy 123keV beam ESRF")
-    plt.show()
-
-# fill excel
-if fill_excel_bool:
-    fill_excel(excel_file, ws_name, strip_edep, 15, col_to_fill)
+# # fill excel
+# if fill_excel_bool:
+#     fill_excel(excel_file, ws_name, strip_edep, 15, col_to_fill)
