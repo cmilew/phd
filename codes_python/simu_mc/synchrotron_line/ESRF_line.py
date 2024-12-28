@@ -166,9 +166,9 @@ def run_simulation(n_part):
     N_THREADS = 1
     # unit_spec_file = eV
     beam_energy = 106 * keV
-    sleep_time = True  # only for parallel simulation on CC
+    sleep_time = False  # only for parallel simulation on CC
     physics_list = "G4EmLivermorePolarizedPhysics"
-    visu = False
+    visu = True
 
     # Beam dimensions defined at sec col
     beam_width = 35e-3 * m  # beam width for step phantom setup
@@ -248,19 +248,20 @@ def run_simulation(n_part):
     )
 
     # creates MSC sides bloc
-    # MSC slit width = 205 slits of 50 um + 204 leaves of 150 um (arbiterary choice to
+    # MSC slit width = 125 slits of 50 um + 124 leaves of 350 um (arbiterary choice to
     # have at least 40 mm of beam width covered)
-    msc_slit_width = (205 * 50e-6 + 204 * 150e-6) * m
+    msc_slit_width = (125 * 50e-6 + 124 * 350e-6) * m
     z_translation_msc = world_length / 2 - margin_world_edge_source - d_source_msc
     create_kill_collim(
         sim, "msc", "world", z_translation_msc, msc_slit_width, 3e-3 * m, 8e-3 * m, m
     )
 
-    # creates MSC 199 leaves
-    create_kill_msc_leaves(sim, "world", 204, m, z_translation_msc, 200e-6 * m)
+    # creates MSC 124 leaves
+    create_kill_msc_leaves(sim, "world", 124, m, z_translation_msc, 400e-6 * m)
     z_phsp_end_line = (
         world_length / 2 - margin_world_edge_source - d_source_end_line_phsp
     )
+
     create_phsp(
         sim,
         f"phsp_end_ESRF_line{Decimal(N_PARTICLES):.3E}_events",
