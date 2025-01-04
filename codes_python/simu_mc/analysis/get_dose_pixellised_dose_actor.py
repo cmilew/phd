@@ -20,11 +20,8 @@ def get_strip_edep(edep_array):
     pixel = 0
 
     while pixel < total_pix:
-        print(f"pixel : {pixel}")
         if pixel + n_strip_pix <= total_pix:
-            print(f"pixel + n_strip_pix : {pixel + n_strip_pix}")
             strip_edep.append(np.sum(edep_array_x[pixel : pixel + n_strip_pix]))
-            print(f"value added {np.sum(edep_array_x[pixel : pixel + n_strip_pix])}")
         else:
             break
         pixel += n_strip_pix + n_interstrip_pix
@@ -49,17 +46,10 @@ plot_bool = True
 col_to_fill = 4
 
 # simulation files
-path_edep = rf"C:\Users\milewski\Desktop\these\phd\codes_python\simu_mc\output\{slab_thickness}mm_{slab_material}_detector_edep.mhd"
-
-# path_edep_uncertain = rf"C:\Users\milewski\Desktop\these\phd\codes_python\simu_mc\output\{slab_thickness}mm_{slab_material}_detector-edep-uncertainty.mhd"
-
-
-# excel file for results
-excel_file = os.path.join(
+path_edep = os.path.join(
     os.path.dirname(__file__),
-    r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\simulations_MC\results_step_phantom.xlsx",
+    rf"{slab_thickness}mm_{slab_material}_detector_edep.mhd",
 )
-
 
 # gets dose actor = img
 edep = sitk.ReadImage(path_edep)
@@ -67,27 +57,14 @@ edep = sitk.ReadImage(path_edep)
 
 # converts dose actor img in numpy array
 edep_array = sitk.GetArrayFromImage(edep)
+strip_edep = get_strip_edep(edep_array)
 
 
-array_test = np.zeros((1, 1, 93))  # Initialize with zeros
-array_test[0, 0, 0:23] = 1  # Set the first block of 23 ones
-array_test[0, 0, 31:54] = 1  # Set the second block of 23 ones
-array_test[0, 0, 62:85] = 1  # Set the third block of 23 ones
-array_test[0, 0, 63] = 2
-
-strip_edep = get_strip_edep(array_test)
-print(strip_edep)
-
-# strip_num = range(1, 137)
-
-# if plot_bool:
-#     slab_thickness = int(slab_thickness)
-#     plt.bar(strip_num, strip_edep)
-#     plt.xlabel("Strip number")
-#     plt.ylabel("Edep (MeV)")
-#     plt.title(f"Edep measured by strips for mono energy 123keV beam ESRF")
-#     plt.show()
-
-# # fill excel
-# if fill_excel_bool:
-#     fill_excel(excel_file, ws_name, strip_edep, 15, col_to_fill)
+if plot_bool:
+    slab_thickness = int(slab_thickness)
+    plt.bar(range(1, 137), strip_edep)
+    # plt.yscale("log")
+    plt.xlabel("Strip number")
+    plt.ylabel("Edep (MeV)")
+    plt.title("Edep measured by strips ESRF")
+    plt.show()
