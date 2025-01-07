@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import numpy as np
 import math
-from shapely.geometry import Polygon
 import pydicom
 import sys
 from openpyxl import load_workbook
@@ -214,8 +213,8 @@ beam_contours = beam_cont_dcm[1][:-1]
 # add first point of beam contours at the end to complete the shape
 beam_contours = np.vstack([beam_contours, beam_contours[0]])
 
-# rotate shape to retrieve same orientation as strip measurements
-beam_contours[:, 0] = -beam_contours[:, 0]
+# reverse beam contours shape to retrieve same orientation as strip measurements
+beam_contours[:, 1] = -beam_contours[:, 1]
 
 # x position of strip 146 (most extreme right strip reading microbeam)
 x_extreme_r_strip = extreme_right_strip * STRIP_PITCH
@@ -225,7 +224,7 @@ x_r_side_mask = extreme_right_strip * STRIP_PITCH + strip_width / 2 + inter_stri
 
 # translate mask shape to match measurements in x direction
 x_shift = abs(np.max(beam_contours[:, 0]) - x_r_side_mask)
-x_dcm = [x + x_shift for x in x_dcm]
+x_dcm = [x + x_shift for x in beam_contours[:, 0]]
 beam_contours[:, 0] = x_dcm
 
 # Strip furthest on the right of all the strips facing a microbeam
@@ -244,31 +243,21 @@ y_r_side_coord = beam_contours[beam_contours[:, 0] == max_x_dcm][:, 1]
 
 # compare center of right side TPS beam shame and center right mb strip = y shift
 y_r_side_center = (y_r_side_coord[1] - y_r_side_coord[0]) / 2 + y_r_side_coord[0]
-print(f"y_r_side_coord = {y_r_side_coord}")
-print(f"y_r_side_center = {y_r_side_center}")
-print(f"y_center_r_mb_strip = {y_center_r_mb_strip}")
 y_shift = abs(y_r_side_center - y_center_r_mb_strip)
+y_dcm = [y + y_shift for y in beam_contours[:, 1]]
 
-y_dcm = [y + y_shift for y in y_dcm]
+# # x coord swhere to cut TPS beam shape
+# x_cut = 18 * STRIP_PITCH - strip_width / 2
+# interpolation = interp1d(x_dcm, y_dcm, kind="linear")
+# y_cut = interpolation(x_cut)
+# x_dcm = [x for x in x_dcm if x > x_cut]
+# y_dcm = [y for y in y_dcm if y > y_cut]
 
-# x coord swhere to cut TPS beam shape
-x_cut = 18 * STRIP_PITCH - strip_width / 2
-interpolation = interp1d(x_dcm, y_dcm, kind="linear")
-y_cut = interpolation(x_cut)
-x_dcm = [x for x in x_dcm if x > x_cut]
-y_dcm = [y for y in y_dcm if y > y_cut]
 
-print(f"beam_contours = {beam_contours}")
-print(f"x_dcm = {x_dcm}")
-print(f"y_dcm = {y_dcm}")
-
-sys.exit()
 # Plot beam shape
 fontsize_value = 15
 fig, ax = plt.subplots()
-ax.plot(x_dcm, y_dcm, "k-", label=theo_shape_label)
-
-# ax.axhline(y=mid_y, color="k", linestyle="--", label="Middle of Y axis")
+ax.plot(x_dcm, y_dcm, "k-", label="Beam shape TPS")
 cmap = get_sub_cmap("YlGn", 0.2, 0.8)
 norm = colors.Normalize(vmin=np.min(v), vmax=np.max(v))
 
