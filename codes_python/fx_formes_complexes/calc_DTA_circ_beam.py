@@ -146,7 +146,7 @@ def get_x_coord_theo_circle(points):
     return x_center_circ
 
 
-def calc_dta(coords_ref, coords_eval, dta_thresh):
+def calc_gamma_dta(coords_ref, coords_eval, dta_thresh):
     """
     Compare 2 sets of coordinates with a criteria Distance To Agreement (DTA).
 
@@ -325,8 +325,5 @@ mes_circ_coord = np.column_stack((x_mb_coord_double, y_mb_coord))
 
 # calc gamma index
 dta_threshold = 0.5
-coords1 = [(1, 1), (2, 2), (3, 3)]
-coords2 = [(1.1, 1.1), (2.1, 2.1), (3.2, 3.3)]
-gamma_index = calc_dta(coords1, coords2, dta_threshold)
-# gamma_index = calc_dta(theo_circ_coord, mes_circ_coord, dta_threshold)
+gamma_index = calc_gamma_dta(theo_circ_coord, mes_circ_coord, dta_threshold)
 print(f"Gamma Index moyen: {gamma_index}")
