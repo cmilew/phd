@@ -2,7 +2,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import numpy as np
 import math
-from shapely.geometry import Polygon
+
+# from shapely.geometry import Polygon
 import pydicom
 import sys
 from openpyxl import load_workbook
