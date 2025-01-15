@@ -164,14 +164,15 @@ def run_simulation(n_part):
     # Simulation parameters
     N_PARTICLES = n_part
     N_THREADS = 1
-    # unit_spec_file = eV
-    beam_energy = 106 * keV
-    sleep_time = False  # only for parallel simulation on CC
+    unit_spec_file = eV
+    # beam_energy = 121 * keV
+    sleep_time = True  # only for parallel simulation on CC
     physics_list = "G4EmLivermorePolarizedPhysics"
-    visu = True
+    visu = False
 
     # Beam dimensions defined at sec col
-    beam_width = 35e-3 * m  # beam width for step phantom setup
+    # beam_width = 35e-3 * m  # beam width for step phantom setup
+    beam_width = 35e-3 * m  # setup step phantom
     beam_height = 795e-6 * m
 
     # Dist between source and collimators
@@ -232,15 +233,15 @@ def run_simulation(n_part):
     source.direction.acceptance_angle.intersection_flag = True
     source.direction.acceptance_angle.skip_policy = "ZeroEnergy"
     source.energy.type = "mono"
-    source.energy.mono = beam_energy
-    # source.energy.type = "spectrum_lines"
-    # spectrum = np.loadtxt(
-    #     os.path.join(os.path.dirname(__file__), "data/ESRF_clinic_spec_maxi_bins.txt"),
-    #     skiprows=1,
-    #     delimiter="\t",
-    # )
-    # source.energy.spectrum_energy = spectrum[:, 0] * unit_spec_file
-    # source.energy.spectrum_weight = spectrum[:, 1]
+    # source.energy.mono = beam_energy
+    source.energy.type = "spectrum_lines"
+    spectrum = np.loadtxt(
+        os.path.join(os.path.dirname(__file__), "data/ESRF_clinic_spec_maxi_bins.txt"),
+        skiprows=1,
+        delimiter="\t",
+    )
+    source.energy.spectrum_energy = spectrum[:, 0] * unit_spec_file
+    source.energy.spectrum_weight = spectrum[:, 1]
 
     # first collimator shaping beam and killing all particles touching/crossing it
     create_kill_collim(
