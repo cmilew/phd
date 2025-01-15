@@ -113,7 +113,7 @@ def calc_mean_speed(time_values, raw_strip_resp):
 
 
 #### TO FILL ####
-fontsize_value = 25
+fontsize_value = 20
 plot_raw_resp = True
 plot_strip_resp = True
 mid_strip = 77
@@ -125,22 +125,7 @@ correspondence_table_file = r"C:\Users\milewski\Desktop/these/mesures/analyse_da
 res_file = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\step_phantom\param_et_resultats.xlsx"
 
 time_values, raw_strip_resp = read_data(mes_file, correspondence_table_file)
-fontsize_value = 10
 
-# raw strips response plot
-if plot_raw_resp:
-    for strip_num in range(18, 153):
-        plt.plot(
-            time_values,
-            raw_strip_resp[strip_num, :],
-            alpha=0.6,
-            label=f"Strip {strip_num}",
-        )
-    plt.xlabel("Time (s)", fontsize=fontsize_value)
-    plt.ylabel("Strip response (AU)", fontsize=fontsize_value)
-    plt.tick_params(axis="both", which="major", labelsize=10)
-    plt.legend()
-    plt.show()
 
 # noize calculation on first 100 events
 noize = [np.mean(raw_strip_resp[strip_num, 0:100]) for strip_num in range(18, 153)]
@@ -167,7 +152,33 @@ center_position = interpol(center_peak_resp[mid_strip][0]) * mean_speed
 centered_positions = positions - center_position
 
 # calculates total sum of responses
-sum_resp = np.sum(normal_strip_resp, axis=0)
+sum_resp = np.sum(raw_strip_resp, axis=0)
+normal_sum_resp = np.sum(normal_strip_resp, axis=0)
+
+# raw strips response plot
+if plot_raw_resp:
+    for strip_num in range(18, 153):
+        plt.plot(
+            centered_positions,
+            raw_strip_resp[strip_num, :],
+            alpha=0.6,
+            label=f"Strip {strip_num}",
+        )
+        plt.plot(
+            centered_positions,
+            sum_resp,
+            label="Strip response sum",
+            color="black",
+            linewidth=1.2,
+            linestyle="-",
+        )
+    plt.xlabel("Time (s)", fontsize=fontsize_value)
+    plt.ylabel("Raw strip response (AU)", fontsize=fontsize_value)
+    plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
+    plt.xlim(-23, 20)
+    # plt.legend()
+    plt.show()
+
 
 # normal strip resp plot
 if plot_strip_resp:
@@ -175,16 +186,16 @@ if plot_strip_resp:
         plt.plot(centered_positions, normal_strip_resp[strip_num, :], alpha=0.6)
     plt.plot(
         centered_positions,
-        sum_resp,
+        normal_sum_resp,
         label="Strip response sum",
         color="black",
         linewidth=1.2,
         linestyle="-",
     )
     plt.xlabel("Positions (mm)", fontsize=fontsize_value)
-    plt.title("Lateral scan with one microbeam", fontsize=fontsize_value)
+    # plt.title("Lateral scan with one microbeam", fontsize=fontsize_value)
     plt.xlim(-23, 20)
     plt.ylabel("Normalized strip response (AU)", fontsize=fontsize_value)
-    plt.tick_params(axis="both", which="major", labelsize=10)
-    plt.legend()
+    plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
+    # plt.legend()
     plt.show()
