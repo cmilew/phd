@@ -91,7 +91,7 @@ step_thickness = np.array([0, 1, 2, 3, 4, 6])
 step_phant_mat = "RW3"
 mc_data_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\simulations_MC\results_step_phantom.xlsx"
 mes_data_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\step_phantom\param_et_resultats.xlsx"
-mc_ws_name = "ESRF_force_coll_test"
+mc_ws_name = "ESRF_poly"
 mes_ws_name = "mean_results"
 start_l_mc = 8
 start_c_mc = 2
@@ -112,9 +112,9 @@ subset_df_uncertain = df.iloc[
 all_edep_mc = subset_df.to_numpy()
 all_uncertain_mc = subset_df_uncertain.to_numpy()
 
+
 # retrieves only statistical uncertainties
 stat_uncertain_mc = all_uncertain_mc[:, 0::2]
-
 
 # retrieves edep only for the strips facing microbeams and make sure values are float
 edep_mc = np.array(all_edep_mc[1::2], dtype=float)
@@ -156,14 +156,14 @@ y_theo = np.exp(-mu_NIST * x_theo)
 
 # plt.plot(x_theo, y_theo, label="theory (NIST)", linestyle="--", color="black")
 plt.scatter(step_thickness, mean_edep_mc, label="MC simulations")
-# plt.errorbar(
-#     step_thickness,
-#     mean_edep_mc,
-#     yerr=mean_uncertain_mc,
-#     fmt="o",
-#     capsize=5,
-#     color="blue",
-# )
+plt.errorbar(
+    step_thickness,
+    mean_edep_mc,
+    yerr=mean_uncertain_mc,
+    fmt="o",
+    capsize=5,
+    color="blue",
+)
 plt.scatter(step_thickness, edep_mes, marker="^", label="experimental")
 plt.errorbar(
     step_thickness, edep_mes, yerr=uncertain_mes, fmt="^", capsize=5, color="orange"
@@ -172,13 +172,13 @@ plt.plot(
     [],
     [],
     color="white",
-    label=f"$\mu$ MC = {mu_mc:.3f} $\pm$ {Decimal(uncertain_mu_mc):.2E} cm\u207b\u00b9",
+    label=f"$\mu$(RW3) MC = {mu_mc:.3f} $\pm$ {round(uncertain_mu_mc, 3)} cm\u207b\u00b9",
 )
 plt.plot(
     [],
     [],
     color="white",
-    label=f"$\mu$ exp = {mu_mes:.3f} $\pm$ {Decimal(uncertain_mu_mes):.2E} cm\u207b\u00b9",
+    label=f"$\mu$(RW3) exp = {mu_mes:.3f} $\pm$ {round(uncertain_mu_mes, 3)} cm\u207b\u00b9",
 )
 # plt.plot(
 #     [],
