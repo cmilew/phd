@@ -22,19 +22,19 @@ def exponential_model(x, a, b):
     return a * np.exp(-b * x)
 
 
-def calc_mu(step_thickness, edep):
+def calc_mu(step_thickness, edep, uncertain_edep):
     popt, pcov = curve_fit(
         exponential_model,
         step_thickness,
         edep,
-        p0=(1, 1),
+        sigma=uncertain_edep,
+        absolute_sigma=True,
     )
     a_opt, b_opt = popt
     mu = b_opt
 
     # uncertainties on exponential fit
-    perr = np.sqrt(np.diag(pcov))
-    a_err, b_err = perr
+    a_err, b_err = np.sqrt(np.diag(pcov))
     mu_uncertain = b_err
 
     return mu, mu_uncertain
@@ -65,17 +65,17 @@ def generate_normal_matrix(matrix, matrix_uncertain):
     return normal_matrix, normal_matrix_uncertain
 
 
-def get_fit_expo_data(x_data, y_data):
+def get_fit_expo_data(x_data, y_data, y_uncertain):
     popt, pcov = curve_fit(
         exponential_model,
         x_data,
         y_data,
-        p0=(1, 1),
+        sigma=y_uncertain,
+        absolute_sigma=True,
     )
     a_opt, b_opt = popt
     mu = b_opt
-    perr = np.sqrt(np.diag(pcov))
-    a_err, b_err = perr
+    a_err, b_err = np.sqrt(np.diag(pcov))
     mu_uncertain = b_err
 
     x_fit = np.linspace(min(step_thickness), max(step_thickness), len(step_thickness))
@@ -90,11 +90,11 @@ step_thickness = np.array([0, 1, 2, 2.5, 3, 4, 5])
 step_phant_mat = "SolidHE"
 data_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\simulations_MC\results_step_phantom.xlsx"
 ws_name = "ANSTO_106keV_r2"
-fill_excel_bool = True
+fill_excel_bool = False
 fontsize_val = 20
-plot_res_bool = False
-mu_mc = 0.164
-uncertain_mu_mc = 0.0009
+plot_res_bool = True
+mu_mc = 0.169
+uncertain_mu_mc = 0.004
 mu_mes = 0.173
 mu_NIST = 0.170
 uncertain_mu_mes = 0.003
@@ -105,7 +105,7 @@ df = pd.read_excel(data_file, sheet_name=ws_name)
 subset_df = df.iloc[8 : 8 + n_strips, 2 : 2 + len(step_thickness)]
 subset_df_uncertain = df.iloc[
     8 : 8 + n_strips,
-    9 : 9 + len(step_thickness) * 2,
+    10 : 10 + len(step_thickness) * 2,
 ]
 edep_mc = subset_df.to_numpy()
 all_uncertain_mc = subset_df_uncertain.to_numpy()
@@ -119,8 +119,8 @@ stat_uncertain_mc = all_uncertain_mc[:, 0::2]
 # calc mu for every strips
 strip_mu_mc = []
 uncertain_mu_fit_mc = []
-for strip_edep in edep_mc:
-    mu, uncertain_mu = calc_mu(step_thickness, strip_edep)
+for strip in range(n_strips):
+    mu, uncertain_mu = calc_mu(step_thickness, edep_mc[strip], stat_uncertain_mc[strip])
     strip_mu_mc.append(mu)
     uncertain_mu_fit_mc.append(uncertain_mu)
 if fill_excel_bool:
