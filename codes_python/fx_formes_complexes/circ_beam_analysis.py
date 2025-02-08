@@ -58,12 +58,14 @@ def mask_hull(tuple_points):
     return points
 
 
-def get_excel_data(excel_file, ws_name, start_l, start_col):
+def get_excel_data(excel_file, ws_name, start_l, start_col, len_data):
     """gets  noize and normalization values from excel file calculated from lateral
     microbeam scan"""
     wb_res = load_workbook(excel_file)
     ws = wb_res[ws_name]
-    excel_data = [ws.cell(row=start_l + i, column=start_col).value for i in range(135)]
+    excel_data = [
+        ws.cell(row=start_l + i, column=start_col).value for i in range(len_data)
+    ]
     np.concatenate((np.zeros(18), excel_data))
     return np.array(excel_data)
 
@@ -95,20 +97,13 @@ def get_x_coord_theo_circle(points):
     x_profil_x = points[np.in1d(points[:, 1], mid_y)][:, 0]
     x_profil_v = points[np.in1d(points[:, 1], mid_y)][:, 2]
 
-    # integral of x profile
-    integ = np.zeros(len(x_profil_v))
-    for i in range(len(x_profil_v)):
-        if i == 0:
-            integ[i] = x_profil_v[i] * STRIP_PITCH
-        else:
-            integ[i] = x_profil_v[i] * STRIP_PITCH + integ[i - 1]
-
-    # calc middle of integral
-    mid_integ_y = (max(integ) - min(integ)) / 2
-    mid_integ_x = np.interp(mid_integ_y, integ, x_profil_x)
-
-    # find closest peak to middle of integral = x coord of theo circle center
-    x_center_circ = find_x_closest_peak(x_profil_x, x_profil_v, mid_integ_x)
+    # find all peaks
+    peaks, _ = find_peaks(x_profil_v, height=0.5)
+    if len(peaks) > 0:
+        # get index of central peak
+        central_peak_index = peaks[len(peaks) // 2 - 1]
+        # retrieves its x position = x pos of center of theo circle
+        x_center_circ = x_profil_x[central_peak_index]
 
     return x_center_circ
 
@@ -116,17 +111,16 @@ def get_x_coord_theo_circle(points):
 def get_and_format_noize_normal_val(
     excel_file, ws_name, start_l, start_col, time_values
 ):
-    noize = get_excel_data(excel_file, ws_name, start_l, start_col)
-    normal_val = get_excel_data(excel_file, ws_name, start_l, start_col + 1)
+    noize = get_excel_data(excel_file, ws_name, start_l, start_col, 135)
+    normal_val = get_excel_data(excel_file, ws_name, start_l, start_col + 1, 135)
     noize = np.repeat(noize, len(time_values)).reshape(-1, len(time_values))
     normal_val = np.repeat(normal_val, len(time_values)).reshape(-1, len(time_values))
 
     return noize, normal_val
 
 
-def get_y_coord_theo_circle(x_center_coord, couch_shift, strip_resp):
+def get_y_coord_theo_circle(mid_strip, couch_shift, strip_resp):
     # get mid strip resp
-    mid_strip = int(x_center_coord / STRIP_PITCH)
     mid_strip_resp = strip_resp[mid_strip, :]
 
     # calc FWHM middle strip
@@ -151,21 +145,29 @@ def plot_resp(time, resp, title, y_label):
 ## TO FILL #######
 plot_raw_resp = False
 plot_strip_resp = False
-fontsize_value = 10
+fontsize_value = 18
 CORRESPONDANCE_FILE = r"C:\Users\milewski\Desktop\these\mesures\analyse_data\codes_python\150_voies\add_piste.txt"
 DATA_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\fx_circulaire\mesure\zData_150V_150ubeam_795mu_24p8v0_40collim17mmvitesse10.bin"
 DCM_FILE = "RP.1.3.6.1.4.1.33868.20201021131037.169743"
-NORMAL_VAL_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\step_phantom\param_et_resultats.xlsx"
-
-# strip pitch 0.2075 mm calculated at mask position
-STRIP_PITCH = 0.2075
 COUCH_SPEED = 10
 THRESHOLD = 0.15
+NORMAL_VAL_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\step_phantom\param_et_resultats.xlsx"
+
+# strip exact positioning
+strip_pos_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\microbeam_scan_analysis\strip_exact_positioning.xlsx"
+strip_pos = get_excel_data(strip_pos_file, "strip_pos", 3, 4, 153)
+
+# strip positionning at mask
+pitch_strip = 0.2325
+pitch_at_mask = 0.2075
+dim_fact = pitch_at_mask / pitch_strip
+strip_pos_at_mask = strip_pos * dim_fact
+dic_strip_pos = {i: strip_pos_at_mask[i] for i in range(153)}
 
 time_values, raw_strip_resp = read_data(DATA_FILE, CORRESPONDANCE_FILE)
 couch_shift = np.array(time_values) * COUCH_SPEED
-noize_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 4)
-normal_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 5)
+noize_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 4, 135)
+normal_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 5, 135)
 
 # raw strips response plot
 if plot_raw_resp:
@@ -192,15 +194,17 @@ if plot_strip_resp:
         "Normalized resp (%)",
     )
 
+
 # retrieves measurements whose resp > threshold and stores them in "points" array
 points = np.empty((0, 3))
 for istrip, strip in enumerate(strip_resp):
     for iresp, resp in enumerate(strip):
         if resp >= THRESHOLD:
             couch_mvt = time_values[iresp] * COUCH_SPEED
-            dist_between_strips = istrip * STRIP_PITCH
-            points = np.append(points, [(dist_between_strips, couch_mvt, resp)], axis=0)
-
+            # dist_between_strips = istrip * STRIP_PITCH
+            points = np.append(
+                points, [(dic_strip_pos[istrip], couch_mvt, resp)], axis=0
+            )
 x, y, v = points[:, 0], points[:, 1], points[:, 2]
 
 
@@ -212,11 +216,10 @@ couch_shift = couch_shift - min_y
 
 # get center coord of theoratical circle beam shape
 x_center_circ = get_x_coord_theo_circle(points)
-y_center_circ = get_y_coord_theo_circle(x_center_circ, couch_shift, raw_strip_resp)
-
-# center x axis on mid strip
-points[:, 0] = points[:, 0] - x_center_circ
-x_center_circ = 0
+mid_strip = [k for k, v in dic_strip_pos.items() if v == x_center_circ]
+assert len(mid_strip) == 1, "More than one mid strip found, should not happen"
+mid_strip = mid_strip[0]
+y_center_circ = get_y_coord_theo_circle(mid_strip, couch_shift, raw_strip_resp)
 
 # create theoratical circle shape of 17 mm centered at calculated points
 rad = 17 / 2
@@ -234,7 +237,6 @@ im = ax.scatter(x, y, s=30, marker="s", cmap=cmap, vmin=v.min(), vmax=v.max(), c
 cbar = fig.colorbar(im, label="Normalized response (%)")
 cbar.ax.tick_params(labelsize=fontsize_value)
 cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
-# ax.plot(hx, hy, "r-", label="Beam shape measured")
 ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
 
 # To get same scale on both axis
@@ -244,7 +246,6 @@ ax.set_yticks(ticks)
 ax.set_aspect("equal", adjustable="box")
 ax.set_ylabel("Couch shift (mm)", fontsize=fontsize_value)
 ax.set_ylim(-2, 20)
-ax.set_xlim(-13, 13)
-ax.legend()
-plt.scatter(x_center_circ, y_center_circ, s=50, label="Center of circle shape")
+ax.set_xlim(-10, 14)
+plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
 plt.show()
