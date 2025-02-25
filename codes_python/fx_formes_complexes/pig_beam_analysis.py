@@ -148,6 +148,27 @@ def get_central_absc_val_fwhm(x, y):
     return (fwhm_right - fwhm_left) / 2 + fwhm_left
 
 
+def resample_points_at_given_x(points, x_target):
+    """Function resampling a given set of coordinates (x,y) by linear interpolation at given x values"""
+    x_target = np.array(x_target)
+    x = points[:, 0]
+    y = points[:, 1]
+    f = interp1d(x, y, kind="linear", fill_value="extrapolate")
+    y_target = f(x_target)
+
+    return np.column_stack((x_target, y_target))
+
+
+def cut_cont_in_between_thresh(contours, thres_low, thresh_high):
+    """Function cutting contours in two part : one top and one bottom at a given
+    threshold"""
+
+    maks = (contours[:, 1] > thres_low) & (contours[:, 1] < thresh_high)
+    contours_cut = contours[maks]
+
+    return contours_cut
+
+
 def cut_beam_contours_at_given_x(beam_contours, x_cut):
     """Function returning beam_contours cut at x_cut"""
 
@@ -301,9 +322,8 @@ THRESHOLD = 0.15
 
 # strip exact positioning
 strip_pos_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\microbeam_scan_analysis\strip_exact_positioning.xlsx"
-strip_pos = get_excel_data(strip_pos_file, "strip_pos", 5, 14, 153)
-# print(strip_pos)
-# sys.exit()
+strip_pos = get_excel_data(strip_pos_file, "strip_pos", 5, 7, 153)
+
 
 # strip positionning at mask
 pitch_strip = 0.2325
@@ -311,13 +331,12 @@ pitch_at_mask = 0.2075
 dim_fact = pitch_at_mask / pitch_strip
 strip_pos_at_mask = strip_pos * dim_fact
 dic_strip_pos = {i: strip_pos_at_mask[i] for i in range(153)}
+central_strip = 73 - 1
 
 time_values, raw_strip_resp = read_data(DATA_FILE, CORRESPONDANCE_FILE)
 couch_shift = np.array(time_values) * COUCH_SPEED
 noize_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 4, 135)
 normal_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 5, 135)
-strip_width = 0.1725  # mm
-inter_strip_width = 0.06  # mm
 
 
 # raw strips response plot
@@ -390,94 +409,37 @@ x_cut = np.max(beam_contours[:, 0]) - width_to_cut
 
 beam_contours_cut = cut_beam_contours_at_given_x(beam_contours, x_cut)
 
+# cut beam contours in half
+# beam_cont_top, beam_cont_bott = cut_cont_in_half(beam_contours_cut, -6)
+
+# # get measured contours
+# meas_cont = get_meas_cont(points)
+# meas_barycenter = [np.mean(meas_cont[:, 0]), np.mean(meas_cont[:, 1])]
+
+# # retrieves x to which interpolate beam contours
+# x_target_resample = np.unique(meas_cont[:, 0])
+
+# # resample beam contours at x_target_resample
+# beam_cont_top_resamp = resample_points_at_given_x(beam_cont_top, x_target_resample)
+# beam_cont_bott_resamp = resample_points_at_given_x(beam_cont_bott, x_target_resample)
+
+# plt.scatter(beam_cont_top_resamp[:, 0], beam_cont_top_resamp[:, 1], c="blue")
+# plt.scatter(beam_cont_bott_resamp[:, 0], beam_cont_bott_resamp[:, 1], c="red")
+plt.scatter(beam_contours_cut[:, 0], beam_contours_cut[:, 1], c="green")
+plt.show()
+
+
+sys.exit()
+
 
 # calc barycenter of beam contours cut
 tps_barycenter = [np.mean(beam_contours_cut[:, 0]), np.mean(beam_contours_cut[:, 1])]
 
 
-# # try registering isocenter of beam shape TPS to middle of strip 85 (= center strip of 8th diamonds)
-# get central y value of FWHM of the profile of middle strip = strip 85
-# y_center_mid_strip = get_central_absc_val_fwhm(couch_shift, strip_resp[85, :])
-# new_iso, beam_cont_reg_iso = reg_beam_cont_to_a_given_point(
-#     beam_contours_cut, [dic_strip_pos[85], y_center_mid_strip], iso_pos
-# )
-
-# # try registering isocenter of beam shape TPS to middle of strip 81 (= center of beam shape)
-# y_center_mid_strip = get_central_absc_val_fwhm(couch_shift, strip_resp[81, :])
-# new_iso, beam_cont_reg_iso = reg_beam_cont_to_a_given_point(
-#     beam_contours_cut, [dic_strip_pos[81], y_center_mid_strip], iso_pos
-# )
-
-
-meas_cont = get_meas_cont(points)
-meas_barycenter = [np.mean(meas_cont[:, 0]), np.mean(meas_cont[:, 1])]
-
-# # try registering isocenter of beam shape TPS to measured barycenter
-# new_iso, beam_cont_reg_iso = reg_beam_cont_to_a_given_point(
-#     beam_contours_cut, meas_barycenter, iso_pos
-# )
-
 # try registering barycenter of beam shape TPS to measured barycenter
 new_iso, beam_cont_reg_iso = reg_beam_cont_to_a_given_point(
     beam_contours_cut, meas_barycenter, tps_barycenter
 )
-
-# plt.plot(beam_cont_reg_iso[:, 0], beam_cont_reg_iso[:, 1], "r-")
-# plt.scatter(new_iso[0], new_iso[1], c="red")
-# plt.show()
-# sys.exit()
-
-# # get differences between barycenter of TPS shape and center of the middle strip in y to
-# # know what shifts to apply to beam contours from TPS to register to measurements
-# if barycenter_y < y_center_mid_strip:
-#     y_shift = y_center_mid_strip - barycenter_y
-# else:
-#     y_shift = barycenter_y - y_center_mid_strip
-
-# # x_shift equals opposite value of isocenter in x because measurements centered on 0
-# x_shift = -barycenter_x
-
-# # register beam contours to measurements
-# x_dcm_reg = beam_contours_cut[:, 0] + x_shift
-# y_dcm_reg = beam_contours_cut[:, 1] + y_shift
-
-# # get central value of FWHM of the profile of the furthest right strip = y center
-# # position of the .dcm beam shape
-# y_center_r_mb_strip = get_central_absc_val_fwhm(couch_shift, strip_resp[r_mb_strip, :])
-
-# # get max x coord of beam contours
-# max_x_dcm = np.max(beam_contours[:, 0])
-
-# # get y dcm coord of furthest right side of TPS beam shape
-# y_r_side_coord = beam_contours[beam_contours[:, 0] == max_x_dcm][:, 1]
-
-# # compare center of right side TPS beam shame and center right mb strip = y shift
-# y_r_side_center = (y_r_side_coord[1] - y_r_side_coord[0]) / 2 + y_r_side_coord[0]
-# y_shift = abs(y_r_side_center - y_center_r_mb_strip)
-# y_dcm = np.array([y + y_shift for y in beam_contours[:, 1]])
-# beam_contours[:, 1] = y_dcm
-
-
-# # x coord swhere to cut TPS beam shape
-# x_cut = 18 * STRIP_PITCH - strip_width / 2
-# interpolation = interp1d(x_dcm, y_dcm, kind="linear")
-# y_cut = interpolation(x_cut)
-# x_dcm = [x for x in x_dcm if x > x_cut]
-# y_dcm = [y for y in y_dcm if y > y_cut]
-
-
-# Plot beam shape
-# print(f"y_middle_strip: {y_center_mid_strip}")
-# print(f"dic_strip_pos[85]: {dic_strip_pos[85]}")
-# print(f"y_shift: {y_shift}")
-# print(f"iso_pos: {iso_pos}")
-# print(f"iso_pos[1] + y_shift : {iso_pos[1] + y_shift}")
-# sys.exit()
-
-# print(f"y_center_mid_strip: {y_center_mid_strip}")
-# print(f"barycenter_y: {barycenter_y}")
-# print(f"y_shift: {y_shift}")
-# print(f"barycenter_y + y_shift: {barycenter_y + y_shift}")
 
 
 fontsize_value = 15
