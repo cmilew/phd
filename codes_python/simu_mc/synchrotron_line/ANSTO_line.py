@@ -157,15 +157,16 @@ def create_phsp(simulation, phsp_name, phsp_mother, phsp_z_translation, m, phsp_
 def run_simulation(n_part):
     # units
     m = gate.g4_units.m
-    # eV = gate.g4_units.eV
     keV = gate.g4_units.keV
     deg = gate.g4_units.deg
 
     # Simulation parameters
     N_PARTICLES = n_part
     N_THREADS = 1
-    # unit_spec_file = eV
-    beam_energy = 106 * keV
+    unit_spec_file = keV
+    beam_type = "AlCu_93keV"
+    spec_file = "ANSTO_AlCu_93keV"
+    # beam_energy = 48 * keV
     sleep_time = True  # only for parallel simulation on CC
     physics_list = "G4EmLivermorePolarizedPhysics"
     visu = False
@@ -233,16 +234,16 @@ def run_simulation(n_part):
     source.direction.acceptance_angle.intersection_flag = True
     source.direction.acceptance_angle.skip_policy = "ZeroEnergy"
     source.energy.type = "mono"
-    source.energy.mono = beam_energy
+    # source.energy.mono = beam_energy
 
-    # source.energy.type = "spectrum_lines"
-    # spectrum = np.loadtxt(
-    #     os.path.join(os.path.dirname(__file__), "data/ESRF_clinic_spec_maxi_bins.txt"),
-    #     skiprows=1,
-    #     delimiter="\t",
-    # )
-    # source.energy.spectrum_energy = spectrum[:, 0] * unit_spec_file
-    # source.energy.spectrum_weight = spectrum[:, 1]
+    source.energy.type = "spectrum_lines"
+    spectrum = np.loadtxt(
+        os.path.join(os.path.dirname(__file__), f"data/{spec_file}.txt"),
+        skiprows=1,
+        delimiter="\t",
+    )
+    source.energy.spectrum_energy = spectrum[:, 0] * unit_spec_file
+    source.energy.spectrum_weight = spectrum[:, 1]
 
     # first collimator shaping beam and killing all particles touching/crossing it
     create_kill_collim(
@@ -266,7 +267,7 @@ def run_simulation(n_part):
 
     create_phsp(
         sim,
-        f"phsp_end_ANSTO_line{Decimal(N_PARTICLES):.3E}_events",
+        f"phsp_ANSTO_{beam_type}MeV_{Decimal(N_PARTICLES):.3E}_events",
         "world",
         z_phsp_end_line,
         m,
