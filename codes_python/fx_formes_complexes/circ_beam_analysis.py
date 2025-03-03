@@ -1,14 +1,9 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import numpy as np
-import math
-
-# from shapely.geometry import Polygon
-import pydicom
 import sys
 from openpyxl import load_workbook
 from cmasher import get_sub_cmap
-from scipy.interpolate import interp1d
 from scipy.signal import find_peaks, peak_widths
 
 
@@ -46,18 +41,6 @@ def read_data(data_file, correspondence_table_file):
     return time_values, raw_strip_resp
 
 
-def mask_hull(tuple_points):
-    """Function to compute the convex hull of a set of points"""
-    points = []
-    for [x, y] in tuple_points:
-        middle = math.ceil(len(points) / 2)
-        if len(points) >= 2 and points[middle - 1][0] == x and points[middle][0] == x:
-            points.pop(middle)
-        points.insert(middle, (x, y))
-
-    return points
-
-
 def get_excel_data(excel_file, ws_name, start_l, start_col, len_data):
     """gets  noize and normalization values from excel file calculated from lateral
     microbeam scan"""
@@ -76,30 +59,6 @@ def find_closest_index(list_of_values, target_value):
     )
 
 
-def find_x_closest_peak(x_data, y_data, x_target):
-    x_peaks_index, _ = find_peaks(y_data)
-    x_peaks = x_data[x_peaks_index]
-    closest_x_peak = x_peaks[np.abs(x_peaks - x_target).argmin()]
-    return closest_x_peak
-
-
-def get_x_coord_theo_circle(x_val, v_val):
-    """Function to calculate the x coordinate of the center of the theoretical beam
-    circle shape. Integrates an X profile of measurements taken at middle of Y axis.
-    Calculates abscisse of the middle of the integral = x coordinate of the center of
-    theoratical circle"""
-
-    # find all peaks
-    peaks, _ = find_peaks(v_val, height=0.5)
-    if len(peaks) > 0:
-        # get index of central peak
-        central_peak_index = peaks[len(peaks) // 2 - 1]
-        # retrieves its x position = x pos of center of theo circle
-        x_center_circ = x_val[central_peak_index]
-
-    return x_center_circ
-
-
 def get_and_format_noize_normal_val(
     excel_file, ws_name, start_l, start_col, time_values
 ):
@@ -111,20 +70,17 @@ def get_and_format_noize_normal_val(
     return noize, normal_val
 
 
-def get_y_coord_of_center_y_profile(mid_strip, couch_shift, strip_resp):
-    """Fonction retrieving the Y profile at a given strip (should be middle strip),
-    calc the FWHM of this profile and return the y coord of the center of the FWHM"""
-
-    # get mid strip resp
-    mid_strip_resp = strip_resp[mid_strip, :]
+def get_y_coord_of_center_y_profile(couch_shift, strip_resp):
+    """Fonction calculating the FWHM of a given strip Y profile and return the y coord
+    of the center of the FWHM"""
 
     # calc FWHM middle strip
-    max_index = mid_strip_resp.argmax()
-    fwhm = peak_widths(mid_strip_resp, [max_index], rel_height=0.5)
+    max_index = strip_resp.argmax()
+    fwhm = peak_widths(strip_resp, [max_index], rel_height=0.5)
     fwhm_left = np.interp(fwhm[2][0], np.arange(len(couch_shift)), couch_shift)
     fwhm_right = np.interp(fwhm[3][0], np.arange(len(couch_shift)), couch_shift)
 
-    return (fwhm_right - fwhm_left) / 2 + fwhm_left
+    return fwhm_right, fwhm_left, (fwhm_right - fwhm_left) / 2 + fwhm_left
 
 
 def plot_resp(time, resp, title, y_label):
@@ -137,10 +93,97 @@ def plot_resp(time, resp, title, y_label):
     plt.show()
 
 
+def find_central_strip(points, dic_strip_pos, plot_x_profile=False):
+    """Function finding the mid y of measurements and calc an X profile at this y
+    position. Finds the first and last peak of this profile and calculates the middle
+    x pos between these 2 peaks. Returns the strip number corresponding to this x pos.
+    If plot_x_profile = True, plots the X profile with the first and last peak and the
+    central strip."""
+
+    # calc X profile at middle of Y axis
+    theo_y_mid = (max(points[:, 1]) - min(points[:, 1])) / 2
+    mid_y = y[find_closest_index(points[:, 1], theo_y_mid)]
+    x_profile_x = points[np.where(points[:, 1] == mid_y)][:, 0]
+    x_profile_v = points[np.where(points[:, 1] == mid_y)][:, 2]
+
+    # find x of first and last peak of x profile
+    peaks, _ = find_peaks(x_profile_v, height=20)
+    x_peak_1 = x_profile_x[peaks[0]]
+    x_peak_2 = x_profile_x[peaks[-1]]
+
+    # find strip x with closest x pos to middle of distance between first and last peak
+    x_target = abs(x_peak_2 - x_peak_1) / 2 + x_peak_2
+    min_diff = np.abs(x_profile_x - x_target).min()
+    central_strip_x = x_profile_x[np.abs(x_profile_x - x_target) == min_diff]
+    central_strip = next(
+        (k for k, v in dic_strip_pos.items() if v == central_strip_x), None
+    )
+
+    if plot_x_profile:
+        plt.plot(x_profile_x, x_profile_v)
+        plt.scatter(x_peak_1, x_profile_v[peaks[0]], color="y", label="First peak")
+        plt.scatter(x_peak_2, x_profile_v[peaks[-1]], color="b", label="Last peak")
+        plt.scatter(
+            central_strip_x,
+            x_profile_v[np.where(x_profile_x == central_strip_x)[0][0]],
+            color="r",
+            label="Central strip",
+        )
+        plt.xlabel(
+            "Distance between strips at mask position (mm)", fontsize=fontsize_value
+        )
+        plt.ylabel("Normalized response (%)", fontsize=fontsize_value)
+        plt.title("X profile at middle of Y axis", fontsize=fontsize_value)
+        plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
+        plt.legend(loc="best")
+        plt.show()
+
+    return central_strip
+
+
+def find_y_center_of_central_strip(
+    strip_resp, central_strip, couch_shift, plot_y_profiles
+):
+    """Function calc the center of y profiles FWHM of strips neighboring central strip
+    (because central strip is not in front of a microbeam) and returns average value"""
+
+    # calc mid of y profile of strips neighboring central strip
+    strip_neigh_1 = strip_resp[central_strip - 1, :]
+    strip_neigh_2 = strip_resp[central_strip + 1, :]
+    fwhm_l_1, fwhm_r_1, y_center_y_profile_1 = get_y_coord_of_center_y_profile(
+        couch_shift, strip_neigh_1
+    )
+    fwhm_l_2, fwhm_r_2, y_center_y_profile_2 = get_y_coord_of_center_y_profile(
+        couch_shift, strip_neigh_2
+    )
+
+    if plot_y_profiles:
+        plt.plot(
+            couch_shift,
+            strip_neigh_2,
+            label="y profile strip left to central strip",
+        )
+        plt.scatter(
+            y_center_y_profile_2,
+            max(strip_neigh_2),
+            color="r",
+        )
+        plt.axvline(fwhm_l_2, color="r", linestyle="--", label="FWHM left")
+        plt.axvline(fwhm_r_2, color="r", linestyle="--", label="FWHM right")
+        plt.xlim(-5, 25)
+        plt.xlabel("Couch shift (mm)", fontsize=fontsize_value)
+        plt.ylabel("Normalized response (%)", fontsize=fontsize_value)
+        plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
+        plt.show()
+
+    return (y_center_y_profile_2 + y_center_y_profile_1) / 2
+
+
 ## TO FILL #######
 plot_raw_resp = False
 plot_strip_resp = False
-plot_x_profile = True
+plot_x_profile = False
+plot_y_profiles = False
 fontsize_value = 20
 CORRESPONDANCE_FILE = r"C:\Users\milewski\Desktop\these\mesures\analyse_data\codes_python\150_voies\add_piste.txt"
 DATA_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\fx_circulaire\mesure\zData_150V_150ubeam_795mu_24p8v0_40collim17mmvitesse10.bin"
@@ -160,7 +203,6 @@ pitch_at_mask = 0.2075
 dim_fact = pitch_at_mask / pitch_strip
 strip_pos_at_mask = strip_pos * dim_fact
 dic_strip_pos = {i: strip_pos_at_mask[i] for i in range(153)}
-central_strip = 73 - 1  # centered on 9 diamonds because index starts at 0
 
 time_values, raw_strip_resp = read_data(DATA_FILE, CORRESPONDANCE_FILE)
 couch_shift = np.array(time_values) * COUCH_SPEED
@@ -212,48 +254,16 @@ y = [y[i] - min_y for i in range(len(y))]
 points[:, 1] = points[:, 1] - min_y
 couch_shift = couch_shift - min_y
 
-# Calc X profile at middle of Y axis
-theo_y_mid = (max(points[:, 1]) - min(points[:, 1])) / 2
-mid_y = y[find_closest_index(points[:, 1], theo_y_mid)]
-x_profile_x = points[np.where(points[:, 1] == mid_y)][:, 0]
-x_profile_v = points[np.where(points[:, 1] == mid_y)][:, 2]
+# find central strip and its x pos = x pos of theo circle beam shape
+central_strip = find_central_strip(points, dic_strip_pos, plot_x_profile)
+x_center_circ = dic_strip_pos[central_strip]
 
-# find central peak of x profile = center of theo circle
-x_center_circ = get_x_coord_theo_circle(x_profile_x, x_profile_v)
-
-if plot_x_profile:
-    plt.plot(x_profile_x, x_profile_v)
-    plt.scatter(
-        x_center_circ,
-        x_profile_v[np.where(x_profile_x == x_center_circ)],
-        color="r",
-        label="Center of circle",
-    )
-    plt.xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
-    plt.ylabel("Normalized response (%)", fontsize=fontsize_value)
-    plt.title("X profile at middle of Y axis", fontsize=fontsize_value)
-    plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
-    plt.show()
-
-
-# print(mid_y)
-# sys.exit()
-x_center_circ = get_x_coord_theo_circle(points)
-# x_center_circ = dic_strip_pos[central_strip]
-
-# get y coord of theo circle beam shape = middle of FWHM of central strip but central
-# strip not in front of a microbeam so take average of middle of FWHM of neighboring
-# strips
-
-y_center_circ_right = get_y_coord_of_center_y_profile(
-    central_strip - 1, couch_shift, strip_resp
+# find y center of central strip = y pos of theo circle beam shape
+y_center_circ = find_y_center_of_central_strip(
+    strip_resp, central_strip, couch_shift, plot_y_profiles
 )
-y_center_circ_left = get_y_coord_of_center_y_profile(
-    central_strip + 1, couch_shift, strip_resp
-)
-y_center_circ = (y_center_circ_right + y_center_circ_left) / 2
 
-# create theoratical circle shape of 17 mm centered at calculated points
+# create theoratical circle shape of 17 mm centered at calc coord
 rad = 17 / 2
 theta = np.linspace(0, 2 * np.pi, 100)
 x_circ = x_center_circ + rad * np.cos(theta)
@@ -262,10 +272,7 @@ y_circ = y_center_circ + rad * np.sin(theta)
 
 # Plot theoratical and measured beam shapes
 fig, ax = plt.subplots()
-# ax.plot(x_circ, y_circ, "k-", label="17 mm circle beam shape")
-y_value = (max(points[:, 1]) - min(points[:, 1])) / 2
-ax.axhline(y=mid_y, color="r", linestyle="--", linewidth=2, label=f"y = {y_value}")
-
+ax.plot(x_circ, y_circ, "k-", label="17 mm circle beam shape")
 cmap = get_sub_cmap("YlGn", 0.2, 0.8)
 norm = colors.Normalize(vmin=np.min(v), vmax=np.max(v))
 im = ax.scatter(x, y, s=30, marker="s", cmap=cmap, vmin=v.min(), vmax=v.max(), c=v)
@@ -273,7 +280,7 @@ cbar = fig.colorbar(im, label="Normalized response (%)")
 cbar.ax.tick_params(labelsize=fontsize_value)
 cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
 ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
-
+ax.scatter(x_center_circ, y_center_circ, color="r", label="Theoretical center")
 
 # To get same scale on both axis
 ticks = np.arange(-12, 30, 2)
