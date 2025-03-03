@@ -2,10 +2,9 @@ import numpy as np
 from openpyxl import load_workbook
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
-from scipy.interpolate import interp1d
 from cmasher import get_sub_cmap
 import matplotlib.colors as colors
-from scipy.signal import find_peaks, peak_widths
+from scipy.signal import peak_widths
 from scipy.spatial.distance import directed_hausdorff
 import sys
 
@@ -44,12 +43,14 @@ def read_data(data_file, correspondence_table_file):
     return time_values, raw_strip_resp
 
 
-def get_excel_data(excel_file, ws_name, start_l, start_col):
-    """gets  noize and normalization peak_values from excel file calculated from lateral
+def get_excel_data(excel_file, ws_name, start_l, start_col, len_data):
+    """gets  noize and normalization values from excel file calculated from lateral
     microbeam scan"""
     wb_res = load_workbook(excel_file)
     ws = wb_res[ws_name]
-    excel_data = [ws.cell(row=start_l + i, column=start_col).value for i in range(135)]
+    excel_data = [
+        ws.cell(row=start_l + i, column=start_col).value for i in range(len_data)
+    ]
     np.concatenate((np.zeros(18), excel_data))
     return np.array(excel_data)
 
@@ -57,8 +58,8 @@ def get_excel_data(excel_file, ws_name, start_l, start_col):
 def get_and_format_noize_normal_val(
     excel_file, ws_name, start_l, start_col, time_values
 ):
-    noize = get_excel_data(excel_file, ws_name, start_l, start_col)
-    normal_val = get_excel_data(excel_file, ws_name, start_l, start_col + 1)
+    noize = get_excel_data(excel_file, ws_name, start_l, start_col, 135)
+    normal_val = get_excel_data(excel_file, ws_name, start_l, start_col + 1, 135)
     noize = np.repeat(noize, len(time_values)).reshape(-1, len(time_values))
     normal_val = np.repeat(normal_val, len(time_values)).reshape(-1, len(time_values))
 
@@ -98,52 +99,6 @@ def find_x_closest_peak(x_data, y_data, x_target):
     x_peaks = x_data[x_peaks_index]
     closest_x_peak = x_peaks[np.abs(x_peaks - x_target).argmin()]
     return closest_x_peak
-
-
-def get_y_coord_theo_circle(x_center_coord, couch_shift, strip_resp):
-    # get mid strip resp
-    mid_strip = int(x_center_coord / STRIP_PITCH)
-    mid_strip_resp = strip_resp[mid_strip, :]
-
-    # calc FWHM middle strip
-    max_index = mid_strip_resp.argmax()
-    fwhm = peak_widths(mid_strip_resp, [max_index], rel_height=0.5)
-    fwhm_left = np.interp(fwhm[2][0], np.arange(len(couch_shift)), couch_shift)
-    fwhm_right = np.interp(fwhm[3][0], np.arange(len(couch_shift)), couch_shift)
-
-    return (fwhm_right - fwhm_left) / 2 + fwhm_left
-
-
-def get_x_coord_theo_circle(points):
-    """Function to calculate the x coordinate of the center of the theoretical beam
-    circle shape. Integrates an X profile of measurements taken at middle of Y axis.
-    Calculates abscisse of the middle of the integral = x coordinate of the center of
-    theoratical circle"""
-
-    # get middle of y axis coordinate
-    theo_mid_y = (max(points[:, 1]) - min(points[:, 1])) / 2
-    mid_y = y[find_closest_index(points[:, 1], theo_mid_y)]
-
-    # x profile values (at middle of y axis)
-    x_profil_x = points[np.in1d(points[:, 1], mid_y)][:, 0]
-    x_profil_v = points[np.in1d(points[:, 1], mid_y)][:, 2]
-
-    # integral of x profile
-    integ = np.zeros(len(x_profil_v))
-    for i in range(len(x_profil_v)):
-        if i == 0:
-            integ[i] = x_profil_v[i] * STRIP_PITCH
-        else:
-            integ[i] = x_profil_v[i] * STRIP_PITCH + integ[i - 1]
-
-    # calc middle of integral
-    mid_integ_y = (max(integ) - min(integ)) / 2
-    mid_integ_x = np.interp(mid_integ_y, integ, x_profil_x)
-
-    # find closest peak to middle of integral = x coord of theo circle center
-    x_center_circ = find_x_closest_peak(x_profil_x, x_profil_v, mid_integ_x)
-
-    return x_center_circ
 
 
 def hausdorff_distance(set1, set2):
@@ -212,24 +167,152 @@ def get_meas_cont(points):
     return np.column_stack((x_mb_coord_double, y_mb_coord))
 
 
+def find_central_strip(points, dic_strip_pos, plot_x_profile=False):
+    """Function finding the mid y of measurements and calc an X profile at this y
+    position. Finds the first and last peak of this profile and calculates the middle
+    x pos between these 2 peaks. Returns the strip number corresponding to this x pos.
+    If plot_x_profile = True, plots the X profile with the first and last peak and the
+    central strip."""
+
+    # calc X profile at middle of Y axis
+    theo_y_mid = (max(points[:, 1]) - min(points[:, 1])) / 2
+    mid_y = y[find_closest_index(points[:, 1], theo_y_mid)]
+    x_profile_x = points[np.where(points[:, 1] == mid_y)][:, 0]
+    x_profile_v = points[np.where(points[:, 1] == mid_y)][:, 2]
+
+    # find x of first and last peak of x profile
+    peaks, _ = find_peaks(x_profile_v, height=20)
+    x_peak_1 = x_profile_x[peaks[0]]
+    x_peak_2 = x_profile_x[peaks[-1]]
+
+    # find strip x with closest x pos to middle of distance between first and last peak
+    x_target = abs(x_peak_2 - x_peak_1) / 2 + x_peak_2
+    min_diff = np.abs(x_profile_x - x_target).min()
+    central_strip_x = x_profile_x[np.abs(x_profile_x - x_target) == min_diff]
+    central_strip = next(
+        (k for k, v in dic_strip_pos.items() if v == central_strip_x), None
+    )
+
+    if plot_x_profile:
+        plt.plot(x_profile_x, x_profile_v)
+        plt.scatter(x_peak_1, x_profile_v[peaks[0]], color="y", label="First peak")
+        plt.scatter(x_peak_2, x_profile_v[peaks[-1]], color="b", label="Last peak")
+        plt.scatter(
+            central_strip_x,
+            x_profile_v[np.where(x_profile_x == central_strip_x)[0][0]],
+            color="r",
+            label="Central strip",
+        )
+        plt.xlabel(
+            "Distance between strips at mask position (mm)", fontsize=fontsize_value
+        )
+        plt.ylabel("Normalized response (%)", fontsize=fontsize_value)
+        plt.title("X profile at middle of Y axis", fontsize=fontsize_value)
+        plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
+        plt.legend(loc="best")
+        plt.show()
+
+    return central_strip
+
+
+def get_y_coord_of_center_y_profile(couch_shift, strip_resp):
+    """Fonction calculating the FWHM of a given strip Y profile and return the y coord
+    of the center of the FWHM"""
+
+    # calc FWHM middle strip
+    max_index = strip_resp.argmax()
+    fwhm = peak_widths(strip_resp, [max_index], rel_height=0.5)
+    fwhm_left = np.interp(fwhm[2][0], np.arange(len(couch_shift)), couch_shift)
+    fwhm_right = np.interp(fwhm[3][0], np.arange(len(couch_shift)), couch_shift)
+
+    return fwhm_right, fwhm_left, (fwhm_right - fwhm_left) / 2 + fwhm_left
+
+
+def find_y_center_of_central_strip(
+    strip_resp, central_strip, couch_shift, plot_y_profiles
+):
+    """Function calc the center of y profiles FWHM of strips neighboring central strip
+    (because central strip is not in front of a microbeam) and returns average value"""
+
+    # calc mid of y profile of strips neighboring central strip
+    strip_neigh_1 = strip_resp[central_strip - 1, :]
+    strip_neigh_2 = strip_resp[central_strip + 1, :]
+    fwhm_l_1, fwhm_r_1, y_center_y_profile_1 = get_y_coord_of_center_y_profile(
+        couch_shift, strip_neigh_1
+    )
+    fwhm_l_2, fwhm_r_2, y_center_y_profile_2 = get_y_coord_of_center_y_profile(
+        couch_shift, strip_neigh_2
+    )
+
+    if plot_y_profiles:
+        plt.plot(
+            couch_shift,
+            strip_neigh_2,
+            label="y profile strip left to central strip",
+        )
+        plt.scatter(
+            y_center_y_profile_2,
+            max(strip_neigh_2),
+            color="r",
+        )
+        plt.axvline(fwhm_l_2, color="r", linestyle="--", label="FWHM left")
+        plt.axvline(fwhm_r_2, color="r", linestyle="--", label="FWHM right")
+        plt.xlim(-5, 25)
+        plt.xlabel("Couch shift (mm)", fontsize=fontsize_value)
+        plt.ylabel("Normalized response (%)", fontsize=fontsize_value)
+        plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
+        plt.show()
+
+    return (y_center_y_profile_2 + y_center_y_profile_1) / 2
+
+
+def find_closest_coordinates(array1, array2):
+    """Function to find the closest coordinates in array2 to each coordinate in array1"""
+    # Initialize an empty list to store the closest coordinates
+    closest_coords = []
+    # Loop through each coordinate pair in the first array
+    for coord1 in array1:
+        # Calculate the Euclidean distance to all coordinates in the second array
+        distances = np.linalg.norm(array2 - coord1, axis=1)
+
+        # Find the index of the closest coordinate in array2
+        min_index = np.argmin(distances)
+
+        # Get the closest coordinate pair from array2
+        closest_coords.append(array2[min_index])
+
+    # Convert the result to a numpy array and return
+    return np.array(closest_coords)
+
+
 ## TO FILL #######
 plot_raw_resp = False
 plot_strip_resp = False
-fontsize_value = 10
+plot_x_profile = False
+plot_y_profiles = False
+fontsize_value = 15
 CORRESPONDANCE_FILE = r"C:\Users\milewski\Desktop\these\mesures\analyse_data\codes_python\150_voies\add_piste.txt"
 DATA_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\fx_circulaire\mesure\zData_150V_150ubeam_795mu_24p8v0_40collim17mmvitesse10.bin"
 DCM_FILE = "RP.1.3.6.1.4.1.33868.20201021131037.169743"
-NORMAL_VAL_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\step_phantom\param_et_resultats.xlsx"
-
-# strip pitch 0.2075 mm calculated at mask position
-STRIP_PITCH = 0.2075
 COUCH_SPEED = 10
 THRESHOLD = 0.15
+NORMAL_VAL_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\step_phantom\param_et_resultats.xlsx"
+
+# strip exact positioning
+strip_pos_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\microbeam_scan_analysis\strip_exact_positioning.xlsx"
+strip_pos = get_excel_data(strip_pos_file, "strip_pos", 5, 7, 153)
+
+# strip positionning at mask
+pitch_strip = 0.2325
+pitch_at_mask = 0.2075
+dim_fact = pitch_at_mask / pitch_strip
+strip_pos_at_mask = strip_pos * dim_fact
+dic_strip_pos = {i: strip_pos_at_mask[i] for i in range(153)}
 
 time_values, raw_strip_resp = read_data(DATA_FILE, CORRESPONDANCE_FILE)
 couch_shift = np.array(time_values) * COUCH_SPEED
-noize_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 4)
-normal_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 5)
+noize_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 4, 135)
+normal_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 5, 135)
 
 
 # cut noize and normalize strip resp
@@ -246,10 +329,10 @@ for istrip, strip in enumerate(strip_resp):
     for iresp, resp in enumerate(strip):
         if resp >= THRESHOLD:
             couch_mvt = time_values[iresp] * COUCH_SPEED
-            dist_between_strips = istrip * STRIP_PITCH
-            points = np.append(points, [(dist_between_strips, couch_mvt, resp)], axis=0)
-
-# x and y = geometric coordinates of the points, v = response of the strip
+            # dist_between_strips = istrip * STRIP_PITCH
+            points = np.append(
+                points, [(dic_strip_pos[istrip], couch_mvt, resp)], axis=0
+            )
 x, y, v = points[:, 0], points[:, 1], points[:, 2]
 
 # starts Y axis at 0
@@ -258,133 +341,64 @@ y = y - min_y
 points[:, 1] = points[:, 1] - min_y
 couch_shift = couch_shift - min_y
 
-# get center coord of theoratical circle beam shape
-x_center_circ = get_x_coord_theo_circle(points)
-y_center_circ = get_y_coord_theo_circle(x_center_circ, couch_shift, raw_strip_resp)
+# find central strip and its x pos = x pos of theo circle beam shape
+central_strip = find_central_strip(points, dic_strip_pos, plot_x_profile)
+x_center_circ = dic_strip_pos[central_strip]
 
-# center x axis on mid strip
-points[:, 0] = points[:, 0] - x_center_circ
-x_center_circ = 0
+# find y center of central strip = y pos of theo circle beam shape
+y_center_circ = find_y_center_of_central_strip(
+    strip_resp, central_strip, couch_shift, plot_y_profiles
+)
 
-# create theoratical circle shape of 17 mm centered at calculated points
+# get measured contours
+meas_cont = get_meas_cont(points)
+
+# create theoratical circle shape of 17 mm centered at calculated points with a lot of
+# points
 rad = 17 / 2
-theta = np.linspace(0, 2 * np.pi, 100)
-x_circ = np.unique(x, axis=0)
-x_circ = np.round(x_center_circ + rad * np.cos(theta), 3)
-y_circ = np.round(y_center_circ + rad * np.sin(theta), 3)
-theo_circ_coord = xy_array = np.column_stack((x_circ, y_circ))
+theta = np.linspace(0, 2 * np.pi, 100000)
+x_circ = x_center_circ + rad * np.cos(theta)
+y_circ = y_center_circ + rad * np.sin(theta)
+theo_circ_cont = np.column_stack((x_circ, y_circ))
 
-# coord to remove to have same sampling between shape measured and theoratical
-coord_to_del = [
-    [8.5, 8.79],
-    [8.483, 9.329],
-    [8.432, 9.866],
-    [8.483, 8.25],
-    [8.432, 7.714],
-    [8.228, 6.655],
-    [8.076, 6.137],
-    [8.228, 10.924],
-    [8.076, 11.442],
-    [7.675, 12.443],
-    [7.675, 5.136],
-    [6.845, 3.75],
-    [-8.496, 8.52],
-    [-8.496, 9.059],
-    [-8.393, 10.133],
-    [-8.291, 10.662],
-    [-7.987, 11.697],
-    [-7.555, 12.684],
-    [-6.681, 14.044],
-    [-8.393, 7.447],
-    [-8.291, 6.917],
-    [-7.787, 5.382],
-    [-8.156, 6.395],
-    [-7.001, 3.97],
-]
-for coord in coord_to_del:
-    index_to_rem = np.where(
-        (theo_circ_coord[:, 0] == coord[0]) & (theo_circ_coord[:, 1] == coord[1])
-    )
-    theo_circ_coord = np.delete(theo_circ_coord, index_to_rem, axis=0)
-
-# gets miccrobeams x position
-x_mb_coord = [x for [x, _, v] in points if v > 40]
-
-# suppress every repeated x coord in x_mb_coord list
-x_mb_coord = list(set(x_mb_coord))
-
-# gets microbeam profile in Y
-mb_v = []
-mb_y = []
-for x_val in x_mb_coord:
-    # microbeam indexes
-    indexes = np.where(x == x_val)[0]
-
-    # corresponding v peak_values of microbeam considered
-    mb_v_for_x_val = v[indexes]
-    mb_y_for_x_val = y[indexes]
-
-    # store v peak_values of microbeams in a list
-    mb_v.append(mb_v_for_x_val)
-    mb_y.append(mb_y_for_x_val)
-
-# gets the half values of the microbeam FWHM
-fwhm_values = [find_fwhm_values(mb) for mb in mb_v]
-
-# gets the y coordinates of the half values of the microbeam FWHM
-y_mb_coord = []
-
-for index_mb, fwhm_tuple in enumerate(fwhm_values):
-    # gets index of first half value in mb_v list
-    index_y_half_val_1 = np.where(mb_v[index_mb] == fwhm_tuple[0])
-
-    # gets y value corresponding to the index in mb_y list and adds it to y_mb_coord list
-    y_mb_coord.append(mb_y[index_mb][index_y_half_val_1])
-
-    # does the same for the second half value
-    index_y_half_val_2 = np.where(mb_v[index_mb] == fwhm_tuple[1])
-    y_mb_coord.append(mb_y[index_mb][index_y_half_val_2])
-
-y_mb_coord = np.array(y_mb_coord)
-# repeats every x coordinates of x_mb_coord twice (because for two y coord there is one
-# x coord)
-x_mb_coord_double = np.array([x for x in x_mb_coord for _ in range(2)])
+# for each meas cont, find the closest theo point on theo shape (with a lot of points)
+# to achieve same sampling for Hausdorff distance calc
+circ_cont = find_closest_coordinates(meas_cont, theo_circ_cont)
 
 
 # Plot theoratical and measured beam shapes
 fig, ax = plt.subplots()
 cmap = get_sub_cmap("YlGn", 0.2, 0.8)
 norm = colors.Normalize(vmin=np.min(v), vmax=np.max(v))
-ax.scatter(
-    theo_circ_coord[:, 0],
-    theo_circ_coord[:, 1],
-)
 
 # ax.plot(x_circ, y_circ, "k-", label="17 mm circle beam shape")
-# im = ax.scatter(x, y, s=30, marker="s", cmap=cmap, vmin=v.min(), vmax=v.max(), c=v)
-# cbar = fig.colorbar(im, label="Normalized response (%)")
-# cbar.ax.tick_params(labelsize=fontsize_value)
-# cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
-# ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
-
+im = ax.scatter(x, y, s=30, marker="s", cmap=cmap, vmin=v.min(), vmax=v.max(), c=v)
+ax.scatter(
+    meas_cont[:, 0],
+    meas_cont[:, 1],
+    s=30,
+    marker="s",
+    color="red",
+    label="measured contours",
+)
+ax.scatter(circ_cont[:, 0], circ_cont[:, 1], label="theoratical contours")
+cbar = fig.colorbar(im, label="Normalized response (%)")
+cbar.ax.tick_params(labelsize=fontsize_value)
+cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
+ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
 
 # To get same scale on both axis
-ticks = np.arange(-12, 30, 2)
-ax.set_xticks(ticks)
-ax.set_yticks(ticks)
+x_ticks = np.arange(-12, 14, 2)
+y_ticks = np.arange(-1, 23, 2)
+ax.set_xticks(x_ticks)
+ax.set_yticks(y_ticks)
 ax.set_aspect("equal", adjustable="box")
-ax.set_xlabel("Distance (mm)")
-ax.set_ylabel("Distance (mm)")
-
-# ax.scatter(x_circ, y_circ, s=30, marker="s", color="black")
-ax.scatter(x_mb_coord_double, y_mb_coord, s=30, marker="s", color="red")
+ax.set_xlabel("Distance (mm)", fontsize=fontsize_value)
+ax.set_ylabel("Distance (mm)", fontsize=fontsize_value)
+ax.tick_params(axis="both", which="major", labelsize=fontsize_value)
+plt.legend(fontsize=fontsize_value)
 plt.show()
 
-# Reorganize coordinates of theoratical shape and measured shape to have an array
-# containing each coordinate couple [x, y]
-# theo_circ_coord = np.column_stack((x_circ, y_circ))
-mes_circ_coord = np.column_stack((x_mb_coord_double, y_mb_coord))
-
 # Calc Hausdorff distance
-distance = hausdorff_distance(theo_circ_coord, mes_circ_coord)
+distance = hausdorff_distance(circ_cont, meas_cont)
 print(f"Hausdorff distance: {distance}")
