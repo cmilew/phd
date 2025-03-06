@@ -1,13 +1,10 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import numpy as np
-import math
 import pydicom
 import sys
 from openpyxl import load_workbook
-from scipy.interpolate import interp1d
 from cmasher import get_sub_cmap
-from scipy.signal import find_peaks, peak_widths
 
 
 def read_data(data_file, correspondence_table_file):
@@ -42,18 +39,6 @@ def read_data(data_file, correspondence_table_file):
             )
 
     return time_values, raw_strip_resp
-
-
-def mask_hull(tuple_points):
-    """Function to compute the convex hull of a set of points"""
-    points = []
-    for [x, y] in tuple_points:
-        middle = math.ceil(len(points) / 2)
-        if len(points) >= 2 and points[middle - 1][0] == x and points[middle][0] == x:
-            points.pop(middle)
-        points.insert(middle, (x, y))
-
-    return points
 
 
 def get_beam_contour_from_dcm(dcm_file):
@@ -95,7 +80,12 @@ def get_beam_contour_from_dcm(dcm_file):
     else:
         print("Pas d'information sur l'isocentre trouvée.")
 
-    return beam_contours, isocenter_pos
+    beam_cont = beam_contours[1][:-1]
+
+    # add first point of beam contours at the end to complete the shape
+    beam_cont = np.vstack([beam_cont, beam_cont[0]])
+
+    return beam_cont, isocenter_pos
 
 
 def get_excel_data(excel_file, ws_name, start_l, start_col, n_l):
@@ -106,12 +96,6 @@ def get_excel_data(excel_file, ws_name, start_l, start_col, n_l):
     excel_data = [ws.cell(row=start_l + i, column=start_col).value for i in range(n_l)]
     np.concatenate((np.zeros(18), excel_data))
     return np.array(excel_data)
-
-
-def find_closest_index(list_of_values, target_value):
-    return min(
-        range(len(list_of_values)), key=lambda x: abs(list_of_values[x] - target_value)
-    )
 
 
 def get_and_format_noize_normal_val(
@@ -127,101 +111,29 @@ def get_and_format_noize_normal_val(
     return noize_strips, normal_val_strips
 
 
-def plot_resp(time, resp, title, y_label):
-    for strip_num in range(18, 153):
-        plt.plot(time, resp[strip_num, :], label=f"Strip {strip_num}")
-    plt.xlabel("Time (s)")
-    plt.ylabel(y_label)
-    plt.legend(loc="best")
-    plt.title(title, fontsize=18, fontstyle="oblique")
-    plt.show()
-
-
-def get_central_absc_val_fwhm(x, y):
-    """Function to return the abscissa of the FWHM central value of a profile"""
-
-    max_index = y.argmax()
-    fwhm = peak_widths(y, [max_index], rel_height=0.5)
-    fwhm_left = np.interp(fwhm[2][0], np.arange(len(x)), x)
-    fwhm_right = np.interp(fwhm[3][0], np.arange(len(x)), x)
-
-    return (fwhm_right - fwhm_left) / 2 + fwhm_left
-
-
-def resample_points_at_given_x(points, x_target):
-    """Function resampling a given set of coordinates (x,y) by linear interpolation at given x values"""
-    x_target = np.array(x_target)
-    x = points[:, 0]
-    y = points[:, 1]
-    f = interp1d(x, y, kind="linear", fill_value="extrapolate")
-    y_target = f(x_target)
-
-    return np.column_stack((x_target, y_target))
-
-
-def cut_cont_in_between_thresh(contours, thres_low, thresh_high):
+def cut_cont_in_half(contours, thresh):
     """Function cutting contours in two part : one top and one bottom at a given
     threshold"""
 
-    maks = (contours[:, 1] > thres_low) & (contours[:, 1] < thresh_high)
-    contours_cut = contours[maks]
+    maks = contours[:, 1] > thresh
+    contours_top = contours[maks]
+    contours_bott = contours[~maks]
 
-    return contours_cut
+    # delete duplicate in contours top
+    contours_top = np.unique(contours_top, axis=0)
+
+    return contours_top, contours_bott
 
 
-def cut_beam_contours_at_given_x(beam_contours, x_cut):
-    """Function returning beam_contours cut at x_cut"""
+def reverse_beam_cont(beam_contours, iso_pos):
+    """Function reversing beam contours shape to retrieve same orientation as strip
+    measurements"""
+    beam_contours[:, 1] = -beam_contours[:, 1]
+    beam_contours[:, 0] = -beam_contours[:, 0]
+    iso_pos[1] = -iso_pos[1]
+    iso_pos[0] = -iso_pos[0]
 
-    # retrieve coordinates of point located before x_cut
-    beam_contours_cut = np.column_stack(
-        (
-            beam_contours[beam_contours[:, 0] < x_cut][:, 0],
-            beam_contours[beam_contours[:, 0] < x_cut][:, 1],
-        )
-    )
-
-    # cut beam contours in 2 : one top and one bottom part to interpolate separately
-    # edges of cut shape, thresh y = -6
-    beam_contours_top = np.column_stack(
-        (
-            beam_contours[beam_contours[:, 1] > -6][:, 0],
-            beam_contours[beam_contours[:, 1] > -6][:, 1],
-        )
-    )
-
-    beam_contours_bott = np.column_stack(
-        (
-            beam_contours[beam_contours[:, 1] < -6][:, 0],
-            beam_contours[beam_contours[:, 1] < -6][:, 1],
-        )
-    )
-
-    # get top edge contour
-    top_interpolation = interp1d(
-        beam_contours_top[:, 0],
-        beam_contours_top[:, 1],
-        kind="linear",
-        fill_value="extrapolate",
-    )
-    y_cut_top = top_interpolation(x_cut)
-
-    # adds top edge contour to arrays of the cut shape coordinates at right place to
-    # keep order of points
-    beam_contours_cut = np.insert(beam_contours_cut, 14, [x_cut, y_cut_top], axis=0)
-
-    # get bottom edge contour
-    bott_interpolation = interp1d(
-        beam_contours_bott[:, 0],
-        beam_contours_bott[:, 1],
-        kind="linear",
-        fill_value="extrapolate",
-    )
-    y_cut_bott = bott_interpolation(x_cut)
-
-    # adds top edge contour to arrays of the cut shape coordinates at right place
-    beam_contours_cut = np.insert(beam_contours_cut, 14, [x_cut, y_cut_bott], axis=0)
-
-    return beam_contours_cut
+    return beam_contours, iso_pos
 
 
 def reg_beam_cont_to_a_given_point(beam_cont, ref_point, point_to_reg):
@@ -262,6 +174,9 @@ def find_fwhm_values(peak_values):
 
 
 def get_meas_cont(points):
+    """Function to get the measured contours by the detector. Measured contours
+    correspond to the FWHM values of each microbeam y profiles"""
+
     # gets miccrobeams x position
     x_mb_coord = [x for [x, _, v] in points if v > 40]
 
@@ -305,12 +220,28 @@ def get_meas_cont(points):
     return np.column_stack((x_mb_coord_double, y_mb_coord))
 
 
+def find_y_target_iso_reg(mes_cont, x_target_iso, d_cont_top_iso, d_cont_bott_iso):
+    """Function finding the target y pos where iso should be move to register TPS cont
+    to measured contours. It correspond to the mean value of the distance between the
+    top and bott contours and the central strip y profile FWHM values"""
+
+    # finds FWHM values of central strip y profile
+    y_at_center_strip = mes_cont[mes_cont[:, 0] == x_target_iso, 1]
+
+    # find target y positions for isocenter registration = should be at the same distance
+    # from top and bott contours as the central strip y profile as the iso is from its TPS
+    # contours (but not exactly so mean value is taken)
+    y_target_iso_1 = y_at_center_strip[0] + d_cont_bott_iso
+    y_target_iso_2 = y_at_center_strip[1] - d_cont_top_iso
+    y_target_iso = (y_target_iso_1 + y_target_iso_2) / 2
+
+    return y_target_iso
+
+
 # TO FILL #############
 plot_raw_resp = False
 plot_strip_resp = False
-fontsize_value = 10
-# strip measuring the microbeam on the furthest right of the mask
-extreme_right_strip = 146
+fontsize_value = 20
 
 CORRESPONDANCE_FILE = r"C:\Users\milewski\Desktop\these\mesures\analyse_data\codes_python\150_voies\add_piste.txt"
 DATA_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\fx_cochons\mesures\zData_150V_150ubeam_795mu_24p8v0_40_collimCochon_vitesse10.bin"
@@ -339,31 +270,11 @@ noize_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 4, 135)
 normal_val = get_excel_data(NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 5, 135)
 
 
-# raw strips response plot
-if plot_raw_resp:
-    plot_resp(
-        time_values,
-        raw_strip_resp,
-        "Raw responses pig beam ESRF",
-        "QDC response (AU)",
-    )
-
-
 # cut noize and normalize strip resp
 noize_val, normal_val = get_and_format_noize_normal_val(
     NORMAL_VAL_FILE, "mb_scan_ESRF", 4, 4, time_values
 )
 strip_resp = (raw_strip_resp - noize_val) / normal_val * 100
-
-# strips response plot
-if plot_strip_resp:
-    plot_resp(
-        time_values,
-        strip_resp,
-        "Normalized strip responses pig beam ESRF",
-        "Normalized resp (%)",
-    )
-
 
 # Compute points
 points = np.empty((0, 3))
@@ -385,82 +296,57 @@ points[:, 1] = points[:, 1] - min_y
 couch_shift = couch_shift - min_y
 
 # beam contours from dcm
-beam_cont_dcm, iso_pos = get_beam_contour_from_dcm(DCM_FILE)
-beam_contours = beam_cont_dcm[1][:-1]
-
-# add first point of beam contours at the end to complete the shape
-beam_contours = np.vstack([beam_contours, beam_contours[0]])
+beam_contours, iso_pos = get_beam_contour_from_dcm(DCM_FILE)
 
 # reverse beam contours shape to retrieve same orientation as strip measurements
-beam_contours[:, 1] = -beam_contours[:, 1]
-beam_contours[:, 0] = -beam_contours[:, 0]
-iso_pos[1] = -iso_pos[1]
-iso_pos[0] = -iso_pos[0]
-
-
-# first and last strip measuring microbeam signal = 18 and 146
-beam_width_seen = abs(dic_strip_pos[146] - dic_strip_pos[18])
-
-# finding at which x coord to cut beam contours to keep only the part of the beam shape
-# seen by detector
-beam_width = np.max(beam_contours[:, 0]) - np.min(beam_contours[:, 0])
-width_to_cut = beam_width - beam_width_seen
-x_cut = np.max(beam_contours[:, 0]) - width_to_cut
-
-beam_contours_cut = cut_beam_contours_at_given_x(beam_contours, x_cut)
+beam_contours, iso_pos = reverse_beam_cont(beam_contours, iso_pos)
 
 # cut beam contours in half
-# beam_cont_top, beam_cont_bott = cut_cont_in_half(beam_contours_cut, -6)
+cont_top, cont_bott = cut_cont_in_half(beam_contours, 0)
+cont_top = np.unique(cont_top, axis=0)
 
-# # get measured contours
-# meas_cont = get_meas_cont(points)
-# meas_barycenter = [np.mean(meas_cont[:, 0]), np.mean(meas_cont[:, 1])]
+# get y coordinates of top and bott contours for x of iso pos
+y_mid_strip_top = np.interp(iso_pos[0], cont_top[:, 0], cont_top[:, 1])
+y_mid_strip_bott = np.interp(iso_pos[0], cont_bott[:, 0], cont_bott[:, 1])
 
-# # retrieves x to which interpolate beam contours
-# x_target_resample = np.unique(meas_cont[:, 0])
+# get distance between top and bott contours and iso pos to know where iso is located
+# relatively to these the contour above and below it
+d_cont_top_iso = abs(y_mid_strip_top - iso_pos[1])
+d_cont_bott_iso = abs(y_mid_strip_bott - iso_pos[1])
 
-# # resample beam contours at x_target_resample
-# beam_cont_top_resamp = resample_points_at_given_x(beam_cont_top, x_target_resample)
-# beam_cont_bott_resamp = resample_points_at_given_x(beam_cont_bott, x_target_resample)
+# get meas cont (=FWHM values of each y profile of strip response)
+meas_cont = get_meas_cont(points)
 
-# plt.scatter(beam_cont_top_resamp[:, 0], beam_cont_top_resamp[:, 1], c="blue")
-# plt.scatter(beam_cont_bott_resamp[:, 0], beam_cont_bott_resamp[:, 1], c="red")
-plt.scatter(beam_contours_cut[:, 0], beam_contours_cut[:, 1], c="green")
-plt.show()
+# find where iso of TPS cont should be positioned to be register to measured contours
+# x target for iso = x of central strip
+x_target_iso = dic_strip_pos[central_strip]
 
-
-sys.exit()
-
-
-# calc barycenter of beam contours cut
-tps_barycenter = [np.mean(beam_contours_cut[:, 0]), np.mean(beam_contours_cut[:, 1])]
-
-
-# try registering barycenter of beam shape TPS to measured barycenter
-new_iso, beam_cont_reg_iso = reg_beam_cont_to_a_given_point(
-    beam_contours_cut, meas_barycenter, tps_barycenter
+# calc the y target position for iso on the 2 strips neighboring the central strip
+# (which are in the beam) and interpolate in between
+x_target_right_strip = dic_strip_pos[central_strip - 1]
+y_target_right_strip = find_y_target_iso_reg(
+    meas_cont, x_target_right_strip, d_cont_top_iso, d_cont_bott_iso
+)
+x_target_left_strip = dic_strip_pos[central_strip + 1]
+y_target_left_strip = find_y_target_iso_reg(
+    meas_cont, x_target_left_strip, d_cont_top_iso, d_cont_bott_iso
 )
 
+# interpolate in between
+y_target_iso = np.interp(
+    x_target_iso,
+    [x_target_left_strip, x_target_right_strip],
+    [y_target_left_strip, y_target_right_strip],
+)
 
+# register TPS isocenter to center of middle strip
+new_iso, beam_cont_reg = reg_beam_cont_to_a_given_point(
+    beam_contours, [x_target_iso, y_target_iso], [iso_pos[0], iso_pos[1]]
+)
+
+# plot measured contours and TPS beam contours
 fontsize_value = 15
 fig, ax = plt.subplots()
-ax.scatter(beam_contours_cut[:, 0], beam_contours_cut[:, 1], c="blue")
-# ax.scatter(iso_pos[0], iso_pos[1], c="red", label="Isocenter")
-ax.scatter(tps_barycenter[0], tps_barycenter[1], c="black", label="Barycenter")
-plt.show()
-
-fig, ax = plt.subplots()
-# ax.plot(beam_cont_reg_iso[:, 0], beam_cont_reg_iso[:, 1], "k-")
-ax.scatter(meas_cont[:, 0], meas_cont[:, 1], color="red", label="isocenter")
-ax.scatter(
-    meas_barycenter[0],
-    meas_barycenter[1],
-    color="black",
-    label="barycentre forme mesurée",
-)
-plt.show()
-sys.exit()
-
 cmap = get_sub_cmap("YlGn", 0.2, 0.8)
 norm = colors.Normalize(vmin=np.min(v), vmax=np.max(v))
 im = ax.scatter(x, y, s=5, cmap=cmap, vmin=v.min(), vmax=v.max(), c=v)
@@ -468,19 +354,14 @@ cbar = fig.colorbar(im, label="Normalized response (%)")
 cbar.ax.tick_params(labelsize=fontsize_value)
 cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
 ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
-ax.legend(fontsize=fontsize_value)
-# plt.scatter(dic_strip_pos[18], 5)
-# plt.scatter(dic_strip_pos[146], 15)
-# plt.scatter(dic_strip_pos[85], y_center_mid_strip, c="red")
+ax.plot(beam_cont_reg[:, 0], beam_cont_reg[:, 1], "k-", label="TPS beam shape")
 
-
-# # To get same scale on both axis
-# ticks = np.arange(0, 38, 2)
-# ax.set_xticks(ticks)
-# ax.set_yticks(ticks)
-# ax.set_aspect("equal", adjustable="box")
-# ax.set_ylabel("Couch shift (mm)", fontsize=fontsize_value)
-# ax.set_ylim(-2, 24)
-# ax.set_xlim(0, 34)
-plt.scatter(new_iso[0], new_iso[1], c="red", label="Isocenter")
+# To get same scale on both axis
+x_ticks = np.arange(-16, 16, 2)
+y_ticks = np.arange(0, 24, 2)
+ax.set_xticks(x_ticks)
+ax.set_yticks(y_ticks)
+ax.set_aspect("equal", adjustable="box")
+ax.set_ylabel("Couch shift (mm)", fontsize=fontsize_value)
+ax.tick_params(axis="both", which="major", labelsize=fontsize_value)
 plt.show()
