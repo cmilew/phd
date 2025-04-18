@@ -151,12 +151,12 @@ def calc_gamma_dta(coords_ref, coords_eval, dta_thresh):
     Compare 2 sets of coordinates with a criteria Distance To Agreement (DTA).
 
     Args:
-        coords1 (array-like): Liste de tuples (x, y) pour la première série de coordonnées.
-        coords2 (array-like): Liste de tuples (x, y) pour la deuxième série de coordonnées.
-        dta_threshold (float): Le seuil de distance pour le critère DTA.
+        ref_coordinates (array-like): list of de tuples (x, y) for reference coordinates.
+        eval_coordinates (array-like): list of de tuples (x, y) for coordinates to evaluate.
+        dta_threshold (float): distance threshold for DTA criteria.
 
     Returns:
-        float: Le gamma index moyen pour les deux séries de coordonnées.
+        float: mean gamma index for 2 sets of coordinates.
     """
     ref_coordinates = np.array(coords_ref)
     eval_coordinates = np.array(coords_eval)
@@ -185,10 +185,23 @@ def calc_gamma_dta(coords_ref, coords_eval, dta_thresh):
     return mean_gamma_index
 
 
+def fill_excel(excel_path, ws_name, data_to_fill, start_l, start_col):
+    wb_res = load_workbook(excel_path)
+    ws = wb_res[ws_name]
+    for i in range(len(data_to_fill)):
+        ws.cell(row=start_l + i, column=start_col, value=data_to_fill[i])
+    wb_res.save(excel_path)
+
+
 ## TO FILL #######
 plot_raw_resp = False
 plot_strip_resp = False
 fontsize_value = 10
+excel_path = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\calc_gamma_index.xlsx"
+ws_name = "circ_beam_shape"
+start_l = 4
+start_c = 9
+fill_excel_bool = False
 CORRESPONDANCE_FILE = r"C:\Users\milewski\Desktop\these\mesures\analyse_data\codes_python\150_voies\add_piste.txt"
 DATA_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\fx_circulaire\mesure\zData_150V_150ubeam_795mu_24p8v0_40collim17mmvitesse10.bin"
 DCM_FILE = "RP.1.3.6.1.4.1.33868.20201021131037.169743"
@@ -298,12 +311,12 @@ ax.scatter(
     y_circ,
 )
 
-# ax.plot(x_circ, y_circ, "k-", label="17 mm circle beam shape")
-# im = ax.scatter(x, y, s=30, marker="s", cmap=cmap, vmin=v.min(), vmax=v.max(), c=v)
-# cbar = fig.colorbar(im, label="Normalized response (%)")
-# cbar.ax.tick_params(labelsize=fontsize_value)
-# cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
-# ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
+ax.plot(x_circ, y_circ, "k-", label="17 mm circle beam shape")
+im = ax.scatter(x, y, s=30, marker="s", cmap=cmap, vmin=v.min(), vmax=v.max(), c=v)
+cbar = fig.colorbar(im, label="Normalized response (%)")
+cbar.ax.tick_params(labelsize=fontsize_value)
+cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
+ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
 
 
 # To get same scale on both axis
@@ -323,7 +336,48 @@ plt.show()
 theo_circ_coord = np.column_stack((x_circ, y_circ))
 mes_circ_coord = np.column_stack((x_mb_coord_double, y_mb_coord))
 
-# calc gamma index
+# calc gamma index for different x and y shift (to optimize registration between
+# theoratical and measured shapes)
 dta_threshold = 0.5
-gamma_index = calc_gamma_dta(theo_circ_coord, mes_circ_coord, dta_threshold)
-print(f"Gamma Index moyen: {gamma_index}")
+shift_pattern = np.concatenate(
+    (np.arange(0.01, 0.06, 0.01), np.arange(-0.01, -0.06, -0.01))
+)
+x_shift = np.concatenate(
+    (
+        np.array([0]),
+        shift_pattern,
+        np.zeros(10),
+        shift_pattern,
+        np.arange(0.01, 0.06, 0.01),
+        np.arange(-0.01, -0.06, -0.01),
+    )
+)
+y_shift = np.concatenate(
+    (
+        np.zeros(11),
+        shift_pattern,
+        shift_pattern,
+        np.arange(-0.01, -0.06, -0.01),
+        np.arange(0.01, 0.06, 0.01),
+    )
+)
+
+x_mes, y_mes = mes_circ_coord[:, 0], mes_circ_coord[:, 1]
+
+mean_gamma = []
+
+for x_s, y_s in zip(x_shift, y_shift):
+    x_mes_shifted = x_mes + x_s
+    y_mes_shifted = y_mes + y_s
+    mean_gamma.append(
+        calc_gamma_dta(
+            np.column_stack((x_mes_shifted, y_mes_shifted)),
+            theo_circ_coord,
+            dta_threshold,
+        )
+    )
+
+if fill_excel_bool:
+    fill_excel(excel_path, ws_name, x_shift, start_l, start_c)
+    fill_excel(excel_path, ws_name, y_shift, start_l, start_c + 1)
+    fill_excel(excel_path, ws_name, mean_gamma, start_l, start_c + 2)

@@ -310,12 +310,25 @@ def calc_gamma_dta(coords_ref, coords_eval, dta_thresh):
     return mean_gamma_index
 
 
+def fill_excel(excel_path, ws_name, data_to_fill, start_l, start_col):
+    wb_res = load_workbook(excel_path)
+    ws = wb_res[ws_name]
+    for i in range(len(data_to_fill)):
+        ws.cell(row=start_l + i, column=start_col, value=data_to_fill[i])
+    wb_res.save(excel_path)
+
+
 # TO FILL #############
 plot_raw_resp = False
 plot_strip_resp = False
 fontsize_value = 10
+fill_excel_bool = False
 # strip measuring the microbeam on the furthest right of the mask
 extreme_right_strip = 146
+excel_path = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\calc_gamma_index.xlsx"
+ws_name = "pig_beam_shape"
+start_l = 4
+start_c = 9
 
 CORRESPONDANCE_FILE = r"C:\Users\milewski\Desktop\these\mesures\analyse_data\codes_python\150_voies\add_piste.txt"
 DATA_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\fx_cochons\mesures\zData_150V_150ubeam_795mu_24p8v0_40_collimCochon_vitesse10.bin"
@@ -452,20 +465,19 @@ x_mb_coord_double = np.array([x for x in x_mb_coord for _ in range(2)])
 # Plot beam shape
 fontsize_value = 15
 fig, ax = plt.subplots()
-# ax.plot(beam_contours[:, 0], beam_contours[:, 1], "k-", label="Beam shape TPS")
 ax.scatter(beam_contours_cut[:, 0], beam_contours_cut[:, 1])
 ax.scatter(x_mb_coord_double, y_mb_coord, s=30, marker="s", color="red")
 ax.set_xlabel("Distance (mm)")
 ax.set_ylabel("Distance (mm)")
 
-# cmap = get_sub_cmap("YlGn", 0.2, 0.8)
-# norm = colors.Normalize(vmin=np.min(v), vmax=np.max(v))
-# im = ax.scatter(x, y, s=5, cmap=cmap, vmin=v.min(), vmax=v.max(), c=v)
-# cbar = fig.colorbar(im, label="Normalized response (%)")
-# cbar.ax.tick_params(labelsize=fontsize_value)
-# cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
-# ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
-# ax.legend(fontsize=fontsize_value)
+cmap = get_sub_cmap("YlGn", 0.2, 0.8)
+norm = colors.Normalize(vmin=np.min(v), vmax=np.max(v))
+im = ax.scatter(x, y, s=5, cmap=cmap, vmin=v.min(), vmax=v.max(), c=v)
+cbar = fig.colorbar(im, label="Normalized response (%)")
+cbar.ax.tick_params(labelsize=fontsize_value)
+cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
+ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
+ax.legend(fontsize=fontsize_value)
 
 # To get same scale on both axis
 ticks = np.arange(0, 32, 2)
@@ -485,7 +497,61 @@ mes_coord = np.column_stack((x_mb_coord_double, y_mb_coord))
 
 # calc gamma index (mes_coord = ref_coordinates because contours from TPS are under
 # sampled and if comparison is performed in the other way, the gamma index will be
-# artificially high)
-dta_threshold = 0.5
-gamma_index = calc_gamma_dta(mes_coord, theo_coord, dta_threshold)
-print(f"Gamma Index moyen: {gamma_index}")
+# artificially high) for different x and y shift (to optimize registration between
+# theoratical and measured shapes)
+dta_threshold = 0.17
+shift_pattern = np.concatenate(
+    (np.arange(0.01, 0.06, 0.01), np.arange(-0.01, -0.06, -0.01))
+)
+x_shift = np.concatenate(
+    (
+        np.array([0]),
+        shift_pattern,
+        np.zeros(10),
+        shift_pattern,
+        np.arange(0.01, 0.06, 0.01),
+        np.arange(-0.01, -0.06, -0.01),
+    )
+)
+y_shift = np.concatenate(
+    (
+        np.zeros(11),
+        shift_pattern,
+        shift_pattern,
+        np.arange(-0.01, -0.06, -0.01),
+        np.arange(0.01, 0.06, 0.01),
+    )
+)
+
+x_shift = np.arange(0.11, 0.21, 0.01)
+y_shift = x_shift
+
+x_mes, y_mes = mes_coord[:, 0], mes_coord[:, 1]
+
+mean_gamma = []
+
+for x_s, y_s in zip(x_shift, y_shift):
+    x_mes_shifted = x_mes + x_s
+    y_mes_shifted = y_mes + y_s
+    mean_gamma.append(
+        calc_gamma_dta(
+            np.column_stack((x_mes_shifted, y_mes_shifted)),
+            theo_coord,
+            dta_threshold,
+        )
+    )
+
+# Plot beam shape
+fontsize_value = 15
+fig, ax = plt.subplots()
+ax.scatter(mes_coord[:, 0], mes_coord[:, 1], s=5, marker="s", color="yellow")
+ax.scatter(x_mes_shifted, y_mes_shifted, s=5, marker="s", color="red")
+ax.scatter(theo_coord[:, 0], theo_coord[:, 1], s=5, marker="s", color="blue")
+ax.set_xlabel("Distance (mm)")
+ax.set_ylabel("Distance (mm)")
+plt.show()
+
+if fill_excel_bool:
+    fill_excel(excel_path, ws_name, x_shift, start_l, start_c)
+    fill_excel(excel_path, ws_name, y_shift, start_l, start_c + 1)
+    fill_excel(excel_path, ws_name, mean_gamma, start_l, start_c + 2)

@@ -241,7 +241,7 @@ def find_y_target_iso_reg(mes_cont, x_target_iso, d_cont_top_iso, d_cont_bott_is
 # TO FILL #############
 plot_raw_resp = False
 plot_strip_resp = False
-fontsize_value = 20
+fontsize_value = 22
 
 CORRESPONDANCE_FILE = r"C:\Users\milewski\Desktop\these\mesures\analyse_data\codes_python\150_voies\add_piste.txt"
 DATA_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\fx_cochons\mesures\zData_150V_150ubeam_795mu_24p8v0_40_collimCochon_vitesse10.bin"

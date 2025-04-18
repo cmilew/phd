@@ -121,19 +121,18 @@ def find_central_strip(points, dic_strip_pos, plot_x_profile=False):
 
     if plot_x_profile:
         plt.plot(x_profile_x, x_profile_v)
-        plt.scatter(x_peak_1, x_profile_v[peaks[0]], color="y", label="First peak")
-        plt.scatter(x_peak_2, x_profile_v[peaks[-1]], color="b", label="Last peak")
-        plt.scatter(
-            central_strip_x,
-            x_profile_v[np.where(x_profile_x == central_strip_x)[0][0]],
-            color="r",
-            label="Central strip",
-        )
+        # plt.scatter(x_peak_1, x_profile_v[peaks[0]], color="y", label="First peak")
+        # plt.scatter(x_peak_2, x_profile_v[peaks[-1]], color="b", label="Last peak")
+        # plt.scatter(
+        #     central_strip_x,
+        #     x_profile_v[np.where(x_profile_x == central_strip_x)[0][0]],
+        #     color="r",
+        #     label="Central strip",
+        # )
         plt.xlabel(
             "Distance between strips at mask position (mm)", fontsize=fontsize_value
         )
         plt.ylabel("Normalized response (%)", fontsize=fontsize_value)
-        plt.title("X profile at middle of Y axis", fontsize=fontsize_value)
         plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
         plt.legend(loc="best")
         plt.show()
@@ -163,14 +162,14 @@ def find_y_center_of_central_strip(
             strip_neigh_2,
             label="y profile strip left to central strip",
         )
-        plt.scatter(
-            y_center_y_profile_2,
-            max(strip_neigh_2),
-            color="r",
-        )
-        plt.axvline(fwhm_l_2, color="r", linestyle="--", label="FWHM left")
-        plt.axvline(fwhm_r_2, color="r", linestyle="--", label="FWHM right")
-        plt.xlim(-5, 25)
+        # plt.scatter(
+        #     y_center_y_profile_2,
+        #     max(strip_neigh_2),
+        #     color="r",
+        # )
+        # plt.axvline(fwhm_l_2, color="r", linestyle="--", label="FWHM left")
+        # plt.axvline(fwhm_r_2, color="r", linestyle="--", label="FWHM right")
+        plt.xlim(-5, 22)
         plt.xlabel("Couch shift (mm)", fontsize=fontsize_value)
         plt.ylabel("Normalized response (%)", fontsize=fontsize_value)
         plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
@@ -182,15 +181,14 @@ def find_y_center_of_central_strip(
 ## TO FILL #######
 plot_raw_resp = False
 plot_strip_resp = False
-plot_x_profile = False
-plot_y_profiles = False
-fontsize_value = 20
+plot_x_profile = True
+plot_y_profiles = True
+fontsize_value = 18
 CORRESPONDANCE_FILE = r"C:\Users\milewski\Desktop\these\mesures\analyse_data\codes_python\150_voies\add_piste.txt"
 DATA_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\fx_formes_complexes\fx_circulaire\mesure\zData_150V_150ubeam_795mu_24p8v0_40collim17mmvitesse10.bin"
-DCM_FILE = "RP.1.3.6.1.4.1.33868.20201021131037.169743"
 COUCH_SPEED = 10
 THRESHOLD = 0.15
-NORMAL_VAL_FILE = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\step_phantom\param_et_resultats.xlsx"
+NORMAL_VAL_FILE = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\step_phantom\measurement_param.xlsx"
 
 # strip exact positioning
 strip_pos_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\microbeam_scan_analysis\strip_exact_positioning.xlsx"
@@ -280,7 +278,7 @@ cbar = fig.colorbar(im, label="Normalized response (%)")
 cbar.ax.tick_params(labelsize=fontsize_value)
 cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
 ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
-ax.scatter(x_center_circ, y_center_circ, color="r", label="Theoretical center")
+# ax.scatter(x_center_circ, y_center_circ, color="r", label="Theoretical center")
 
 # To get same scale on both axis
 ticks = np.arange(-12, 30, 2)

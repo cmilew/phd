@@ -529,14 +529,14 @@ cbar.ax.tick_params(labelsize=fontsize_value)
 cbar.set_label("Normalized response (%)", fontsize=fontsize_value)
 ax.set_xlabel("Distance between strips at mask position (mm)", fontsize=fontsize_value)
 ax.scatter(
-    meas_cont[:, 0], meas_cont[:, 1], color="r", marker="s", label="Measured contours"
+    meas_cont[:, 0], meas_cont[:, 1], color="r", marker="s", label="measured contours"
 )
 ax.scatter(
     beam_cont_same_sample[:, 0],
     beam_cont_same_sample[:, 1],
-    label="TPS beam shape",
+    label="theoratical contours",
 )
-ax.legend()
+ax.legend(fontsize=fontsize_value)
 
 # To get same scale on both axis
 x_ticks = np.arange(-16, 16, 2)
