@@ -6,7 +6,7 @@ import numpy as np
 
 # path_edep_uncertain = os.path.join(
 #     os.path.dirname(__file__),
-#     f"output/{rw3_thickness}cm_rw3_strip_{strip_number}-edep-uncertainty.mhd",
+#     f"output/{slab_thickness}cm_rw3_strip_{strip_number}-edep-uncertainty.mhd",
 # )
 # gets dose actor = img
 # edep = sitk.ReadImage(path_edep)
@@ -45,14 +45,14 @@ def fill_excel(excel_path, ws_name, data_to_fill, start_l, start_col):
 
 
 # DATA TO FILL IN ##########
-rw3_thickness = 0.0
-slab_material = "RW3"
+slab_thickness = 0.0
+slab_material = "SoldHE"
 
 ###########################
 
 # get mhd file path
 script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-relative_path = f"output\{rw3_thickness}mm_{slab_material}_detector_edep.mhd"
+relative_path = f"output\{slab_thickness}mm_{slab_material}_detector_edep.mhd"
 path_edep = os.path.join(script_dir, relative_path)
 excel_path = os.path.join(script_dir, r"read_files\test_dose_actor.xlsx")
 
