@@ -1,0 +1,19 @@
+# NumberOfRun    = 1
+# NumberOfEvents = 10
+# NumberOfTracks = 10
+# NumberOfSteps  = 5
+# NumberOfGeometricalSteps  = ?
+# NumberOfPhysicalSteps     = ?
+# ElapsedTime           = 4.442341
+# ElapsedTimeWoInit     = 0.020757
+# StartDate             = 0 ps 
+# EndDate               = 1 s  
+# PPS (Primary per sec)      = 482
+# TPS (Track per sec)        = 482
+# SPS (Step per sec)         = 241
+# Threads                    = 1
+# Date                       = 2025-03-05 22:30:16.080162
+# Arch                       = Windows
+# Python                     = 3.9.19
+# Track types:
+# gamma = 10
