@@ -1,20 +1,72 @@
-# NumberOfRun    = 62
-# NumberOfEvents = 999999984
-# NumberOfTracks = 1289097412
-# NumberOfSteps  = 6353697432
-# NumberOfGeometricalSteps  = ?
-# NumberOfPhysicalSteps     = ?
-# ElapsedTime           = 9036.540546999999
-# ElapsedTimeWoInit     = 9036.521582
-# StartDate             = 0 ps 
-# EndDate               = 1 s  
-# PPS (Primary per sec)      = 110662
-# TPS (Track per sec)        = 142654
-# SPS (Step per sec)         = 703113
-# Threads                    = 62
-# Date                       = 2024-10-01 15:07:11.261240
-# Arch                       = Linux
-# Python                     = 3.11.10
-# Track types:
-# e- = 288913202
-# gamma = 1000184210
+{
+    "runs": {
+        "value": 1,
+        "unit": null
+    },
+    "events": {
+        "value": 100000,
+        "unit": null
+    },
+    "tracks": {
+        "value": 189750,
+        "unit": null
+    },
+    "steps": {
+        "value": 910531,
+        "unit": null
+    },
+    "init": {
+        "value": 5.48115,
+        "unit": "s"
+    },
+    "duration": {
+        "value": 5.45772,
+        "unit": "s"
+    },
+    "pps": {
+        "value": 18322,
+        "unit": null
+    },
+    "tps": {
+        "value": 34767,
+        "unit": null
+    },
+    "sps": {
+        "value": 166833,
+        "unit": null
+    },
+    "start_time": {
+        "value": "Sun Dec 29 19:32:01 2024",
+        "unit": null
+    },
+    "stop_time": {
+        "value": "Sun Dec 29 19:32:12 2024",
+        "unit": null
+    },
+    "sim_start_time": {
+        "value": 0.0,
+        "unit": "ps"
+    },
+    "sim_stop_time": {
+        "value": 1.0,
+        "unit": "s"
+    },
+    "threads": {
+        "value": 1,
+        "unit": null
+    },
+    "arch": {
+        "value": "Linux",
+        "unit": null
+    },
+    "python": {
+        "value": "3.10.14",
+        "unit": null
+    },
+    "track_types": {
+        "value": {
+            "gamma": 189750
+        },
+        "unit": null
+    }
+}
