@@ -59,16 +59,16 @@ def create_phsp(simulation, phsp_name, phsp_mother, phsp_z_translation, m, phsp_
     phsp_actor.debug = False
 
 
-def run_simulation(n_part):
+def run_simulation(n_part, slab_depth):
     # units
     m = gate.g4_units.m
 
     # simulation parameters
     N_PARTICLES = n_part
-    N_THREADS = 18
+    N_THREADS = 1
     visu = False
-    sleep_time = False
-    phsp_filename = "phsp_end_ESRF_line1.000E+4_events.root"
+    sleep_time = True
+    phsp_filename = "phsp_ANSTO_poly_AlCu_1e9.root"
     physics_list = "G4EmLivermorePolarizedPhysics"
 
     world_length = 7 * m
@@ -85,11 +85,12 @@ def run_simulation(n_part):
     slab_material = "SolidHE"
     slab_w = 0.15 * m
     slab_h = 0.02 * m
-    slab_d = 0 * m
+    slab_d = slab_depth * m
 
     # cuts
     cut_slab_photon = 1e-3 * m
     cut_detector_photon = 10e-6 * m
+    cut_detector_electron = 5e-6 * m
 
     # create the simulation
     sim = gate.Simulation()
@@ -145,7 +146,7 @@ def run_simulation(n_part):
     if slab_d != 0:
         create_box_vol(
             sim,
-            "rw3_slab",
+            "slab",
             "world",
             [slab_w, slab_h, slab_d],
             [0, 0, world_length / 2 - margin_world_edge_source - d_source_slab],
@@ -154,6 +155,17 @@ def run_simulation(n_part):
             cut_slab_photon,
             1 * m,
         )
+
+    # # phsp behind source
+    # z_phsp_beh_source = world_length / 2 - margin_world_edge_source - 0.01 * m
+    # create_phsp(
+    #     sim,
+    #     "phsp_beh_source",
+    #     "world",
+    #     z_phsp_beh_source,
+    #     m,
+    #     ["KineticEnergy", "PrePositionLocal"],
+    # )
 
     # Diamond detector definition
     # lateral shift of det to define which strip is facing the mb
@@ -170,7 +182,7 @@ def run_simulation(n_part):
         "diamant_det",
         [1, 0, 0, 1],
         cut_detector_photon,
-        1 * m,
+        cut_detector_electron,
     )
 
     # volume containing all the strips for dose actor retrievements
@@ -184,12 +196,12 @@ def run_simulation(n_part):
         "diamant_det",
         [0, 0, 1, 1],
         cut_detector_photon,
-        1 * m,
+        cut_detector_electron,
     )
 
     # force collision
-    # force_coll = sim.add_actor("ForceCollisionActor", "force_coll")
-    # force_coll.attached_to = "dose_actor_vol"
+    force_coll = sim.add_actor("ForceCollisionActor", "force_coll")
+    force_coll.attached_to = "dose_actor_vol"
 
     # dose actor
     dose = sim.add_actor("DoseActor", "dose_detector")
@@ -228,8 +240,9 @@ def run_simulation(n_part):
 
 @click.command()
 @click.option("--n_part", default=1, help="Number of particle to simulate")
-def main(n_part):
-    run_simulation(n_part)
+@click.option("--slab_depth", default=0.0, help="Slab depth in m")
+def main(n_part, slab_depth):
+    run_simulation(n_part, slab_depth)
 
 
 if __name__ == "__main__":

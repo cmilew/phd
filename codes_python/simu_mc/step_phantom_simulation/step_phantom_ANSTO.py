@@ -1,9 +1,12 @@
 import os
+import sys
 import opengate as gate
 import numpy as np
-import time
+import pandas as pd
+import itk
 import uproot
 import click
+import time
 
 
 def create_box_vol(
@@ -31,44 +34,70 @@ def create_box_vol(
     )
 
 
-def create_phsp(simulation, phsp_name, phsp_mother, phsp_z_translation, m, phsp_attr):
-    """function creating a phsp of 20 cm x 20 cm x 1 um made of vacuum at given
-    z_translation"""
+def create_array_of_elements(n_elements, center_to_center, *, offset_to_center=0):
+    """Function creating an array of elements separated by a center_to_center distance and centered on 0 by default
+    on the x-axis"""
+    max_dist = center_to_center * (n_elements - 1)
+    return np.linspace(-max_dist / 2, max_dist / 2, n_elements) + offset_to_center
 
-    # phsp plane
-    create_box_vol(
-        simulation,
-        phsp_name,
-        phsp_mother,
-        [0.2 * m, 0.2 * m, 1e-6 * m],
-        [0, 0, phsp_z_translation],
-        "G4_AIR",
-        [0, 0, 1, 1],
-        1e-3 * m,
-        1e-3 * m,
+
+def create_dose_actor_strips(
+    sim,
+    slab_thickness,
+    m,
+    mother_volume,
+    n_strips,
+    center_to_center,
+    *,
+    offset_to_center=0,
+):
+    """Function creating a dose actor for every strips each of them separated by a center_to_center dist"""
+
+    # gets positions of each strips center
+    center_positions = create_array_of_elements(
+        n_strips, center_to_center, offset_to_center=offset_to_center
     )
 
-    # phsp actor
-    phsp_actor = simulation.add_actor("PhaseSpaceActor", phsp_name)
-    phsp_actor.attached_to = phsp_name
-    phsp_actor.attributes = phsp_attr
-    phsp_actor.output_filename = os.path.join(
-        os.path.dirname(__file__),
-        f"output/{phsp_name}.root",
-    )
-    phsp_actor.debug = False
+    for strip_number, pos in enumerate(center_positions):
+        strip = sim.add_volume("BoxVolume", f"strip {strip_number}")
+        strip.mother = mother_volume
+        strip.size = [172.5e-6 * m, 3.2e-3 * m, 150e-6 * m]
+        strip.material = "diamant_det"
+        strip.color = [1, 0, 0, 1]
+        strip.translation = [pos, 0, 0 * m]
+
+        # dose actor
+        dose = sim.add_actor("DoseActor", "dose_strip_" + str(strip_number))
+        dose.mother = f"strip {strip_number}"
+        dose.output = f"output/{slab_thickness}cm_rw3_strip_{strip_number}.mhd"
+        dose.square = False
+        dose.dose = False
+        dose.size = [1, 1, 1]
+
+        # sets hit digitizers
+        hits_digit = sim.add_actor(
+            "DigitizerHitsCollectionActor", f"hits_{strip_number}"
+        )
+        hits_digit.mother = f"strip {strip_number}"
+        hits_digit.output = f"output/{slab_thickness}cm_rw3_strip_{strip_number}.root"
+        hits_digit.attributes = ["TotalEnergyDeposit", "TrackID"]
+
+        # sets production cut
+        sim.physics_manager.set_production_cut(
+            f"strip {strip_number}", "all", 0.1e-3 * m
+        )
 
 
-def run_simulation(n_part, slab_depth):
+def run_simulation(n_part):
     # units
     m = gate.g4_units.m
 
     # simulation parameters
-    N_PARTICLES = n_part
+    N_PARTICLES = 100_000
     N_THREADS = 1
     visu = False
     sleep_time = False
-    phsp_filename = "phsp_ESRF_1e9.root"
+    phsp_filename = "phsp_end_ESRF_line1.000E+9_events.root"
     physics_list = "G4EmLivermorePolarizedPhysics"
 
     world_length = 7 * m
@@ -85,12 +114,11 @@ def run_simulation(n_part, slab_depth):
     slab_material = "RW3"
     slab_w = 0.16 * m
     slab_h = 0.02 * m
-    slab_d = slab_depth * m
+    slab_d = 0 * m
 
     # cuts
     cut_slab_photon = 1e-3 * m
     cut_detector_photon = 10e-6 * m
-    cut_detector_electron = 5e-6 * m
 
     # create the simulation
     sim = gate.Simulation()
@@ -156,30 +184,6 @@ def run_simulation(n_part, slab_depth):
             1 * m,
         )
 
-    # phsp behind source
-    z_phsp_beh_source = world_length / 2 - margin_world_edge_source - 0.01 * m
-    create_phsp(
-        sim,
-        "phsp_beh_source",
-        "world",
-        z_phsp_beh_source,
-        m,
-        ["KineticEnergy", "PrePositionLocal"],
-    )
-
-    # phsp in front of detector
-    z_phsp_front_msc = (
-        world_length / 2 - margin_world_edge_source - d_source_det + 0.05 * m
-    )
-    create_phsp(
-        sim,
-        "phsp_front_det",
-        "world",
-        z_phsp_front_msc,
-        m,
-        ["KineticEnergy", "PrePositionLocal"],
-    )
-
     # Diamond detector definition
     # lateral shift of det to define which strip is facing the mb
     lat_shift = (232.5e-6 / 2 + 232.5e-6 * nb_offset_strips) * direction_offset * m
@@ -195,40 +199,10 @@ def run_simulation(n_part, slab_depth):
         "diamant_det",
         [1, 0, 0, 1],
         cut_detector_photon,
-        cut_detector_electron,
+        1 * m,
     )
-
-    # volume containing all the strips for dose actor retrievements
-    # 136 strips of 172.5 um and 135 interstrips of 60 um = 31.56 mm
-    create_box_vol(
-        sim,
-        "dose_actor_vol",
-        "diamond_detector",
-        [31.56e-3 * m, 3.2e-3 * m, 150e-6 * m],
-        [0, 0, 0],
-        "diamant_det",
-        [0, 0, 1, 1],
-        cut_detector_photon,
-        cut_detector_electron,
-    )
-
-    # force collision
-    force_coll = sim.add_actor("ForceCollisionActor", "force_coll")
-    force_coll.attached_to = "dose_actor_vol"
-
-    # dose actor
-    dose = sim.add_actor("DoseActor", "dose_detector")
-    dose.attached_to = "dose_actor_vol"
-    dose.output_filename = os.path.join(
-        os.path.join(os.path.dirname(__file__), "output"),
-        f"{slab_d}mm_{slab_material}_detector.mhd",
-    )
-    dose.dose.active = False
-    dose.edep_uncertainty.active = True
-    # pixel width = 0.0075 mm => 23 pixels per strips and 8 pixels per interstrip space
-    # 23 * 136 strips + 8 * 135 interstrips = 4208 pixels
-    dose.size = [4208, 1, 1]
-    dose.spacing = [0.0075e-3 * m, 3.2e-3 * m, 150e-6 * m]
+    # strips detector definition
+    create_stripped_detector(sim, slab_d, m, "diamond_detector", 136, 232.5e-6 * m)
 
     # phys
     sim.physics_manager.physics_list_name = physics_list
@@ -236,7 +210,7 @@ def run_simulation(n_part, slab_depth):
     # stat actor
     s = sim.add_actor("SimulationStatisticsActor", "stats")
     s.track_types_flag = True
-    s.output_filename = os.path.join(
+    s.output = os.path.join(
         os.path.join(os.path.dirname(__file__), "output"), "stats.txt"
     )
 
@@ -247,15 +221,14 @@ def run_simulation(n_part, slab_depth):
         time.sleep(rd_time)
     sim.run(start_new_process=False)
 
-    stats = sim.get_actor("stats")
+    stats = sim.output.get_actor("stats")
     print(stats)
 
 
 @click.command()
 @click.option("--n_part", default=1, help="Number of particle to simulate")
-@click.option("--slab_depth", default=0.0, help="Slab depth in m")
-def main(n_part, slab_depth):
-    run_simulation(n_part, slab_depth)
+def main(n_part):
+    run_simulation(n_part)
 
 
 if __name__ == "__main__":
