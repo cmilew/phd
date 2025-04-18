@@ -17,7 +17,6 @@ def read_data(data_file, correspondence_table_file):
     # correspondence of QDC number and strip number file
     pf = open(correspondence_table_file, "r")
     correspondence_table = pf.readlines()
-
     # number of measurements
     nb_events = np.size(zdata) // 309
 
@@ -45,12 +44,13 @@ def calc_center_peak_resp(time, resp):
     the center of the peak response"""
 
     center_peak_resp = np.zeros(153)
+    time_center_peak = np.zeros(153)
 
     for strip in range(18, 153):
         # find peak in strip resp
         peak_index, _ = find_peaks(resp[strip], height=2500)
-        assert len(peak_index) == 1, "More than one peak found for strip {}".format(
-            strip
+        assert len(peak_index) == 1, (
+            "None or more than one peak found for strip {}".format(strip)
         )
 
         # find FWHM
@@ -60,14 +60,17 @@ def calc_center_peak_resp(time, resp):
 
         # calc coord of mid FWHM = center value of peak
         x_mid_peak = (fwhm_left + fwhm_right) / 2
+        time_center_peak[strip] = x_mid_peak
         y_mid_peak = np.interp(x_mid_peak, time_values, strip_resp[strip])
 
         center_peak_resp[strip] = y_mid_peak
+
+        # reformat center_peak_resp to have the same shape as strip resp to normalize this array with it
         center_peak_resp_reformat = np.repeat(center_peak_resp, len(time)).reshape(
             -1, len(time)
         )
 
-    return center_peak_resp_reformat
+    return time_center_peak, center_peak_resp_reformat
 
 
 def calc_mean_speed(time_values, raw_strip_resp):
@@ -94,9 +97,9 @@ def calc_mean_speed(time_values, raw_strip_resp):
         start_end_times = []
         for strip in start_end_strips[idiamond]:
             peak_index, _ = find_peaks(raw_strip_resp[strip], height=2500)
-            assert (
-                len(peak_index) == 1
-            ), "No peak or more than one peak found for {}".format(strip)
+            assert len(peak_index) == 1, (
+                "No peak or more than one peak found for {}".format(strip)
+            )
             start_end_times.append(time_values[peak_index[0]])
 
         # dist between first and last strip of a diamond detector (on first diamond
@@ -112,48 +115,68 @@ def calc_mean_speed(time_values, raw_strip_resp):
     return mean_speed
 
 
+def fill_excel(excel_path, ws_name, data_to_fill, start_l, start_col):
+    wb_res = load_workbook(excel_path)
+    ws = wb_res[ws_name]
+    for i in range(len(data_to_fill)):
+        ws.cell(row=start_l + i, column=start_col, value=data_to_fill[i])
+    wb_res.save(excel_path)
+
+
 #### TO FILL ####
 fontsize_value = 20
 plot_raw_resp = True
 plot_strip_resp = True
-mid_strip = 77
+
+# mid strip = 77 (= 153 / 2) + 17 first strip of missing diamond  - 1 (index start at 0)
+mid_strip = 77 + 17 - 1
+fill_excel_bool = True
+bool_pos_fn_time = False
 
 
 # read measurements data
 mes_file = r"C:\Users\milewski\Desktop/these/mesures/caracterisation_detecteur_8-06-2023/more_homogeneous_zData_150V_1ubeam_24p8v0_scan6.bin"
 correspondence_table_file = r"C:\Users\milewski\Desktop/these/mesures/analyse_data/codes_python/150_voies/add_piste.txt"
 res_file = r"C:\Users\milewski\Desktop\these\papiers\caracterisation_detecteur_153_voies\step_phantom\param_et_resultats.xlsx"
+position_excel_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\microbeam_scan_analysis\strip_exact_positioning.xlsx"
 
 time_values, raw_strip_resp = read_data(mes_file, correspondence_table_file)
 
 
 # noize calculation on first 100 events
-noize = [np.mean(raw_strip_resp[strip_num, 0:100]) for strip_num in range(18, 153)]
-noize = np.concatenate((np.zeros(18), noize))
+noize = np.mean(raw_strip_resp[:, 0:100], axis=1)
 
 # cut noize
 strip_noize = np.repeat(noize, len(time_values)).reshape(-1, len(time_values))
 strip_resp = raw_strip_resp - strip_noize
 
 # normalize strip resp
-center_peak_resp = calc_center_peak_resp(time_values, strip_resp)
-normal_strip_resp = strip_resp[18:153] / center_peak_resp[18:153]
+time_center_peak, center_peak_resp = calc_center_peak_resp(time_values, strip_resp)
+normal_strip_resp = strip_resp[17:153] / center_peak_resp[17:153]
 normal_strip_resp = np.concatenate(
-    (np.zeros((18, len(time_values))), normal_strip_resp)
+    (np.zeros((17, len(time_values))), normal_strip_resp)
 )
+
 
 # convert time values in position
 mean_speed = calc_mean_speed(time_values, raw_strip_resp)
 positions = time_values * mean_speed
+peaks_positions = time_center_peak * mean_speed
 
 # center positions on mid strip
-interpol = interp1d(raw_strip_resp[mid_strip], time_values, kind="linear")
-center_position = interpol(center_peak_resp[mid_strip][0]) * mean_speed
-centered_positions = positions - center_position
+centered_positions = positions - peaks_positions[mid_strip]
+
+peaks_positions_centered = peaks_positions - peaks_positions[mid_strip]
+
+
+# saves centered positions in excel file
+if fill_excel_bool:
+    fill_excel(position_excel_file, "test", peaks_positions, 3, 4)
 
 # calculates total sum of responses
 sum_resp = np.sum(raw_strip_resp, axis=0)
-normal_sum_resp = np.sum(normal_strip_resp, axis=0)
+normal_sum_resp = np.nansum(normal_strip_resp, axis=0)
+
 
 # raw strips response plot
 if plot_raw_resp:
@@ -172,7 +195,7 @@ if plot_raw_resp:
             linewidth=1.2,
             linestyle="-",
         )
-    plt.xlabel("Time (s)", fontsize=fontsize_value)
+    plt.xlabel("Positions (mm)", fontsize=fontsize_value)
     plt.ylabel("Raw strip response (AU)", fontsize=fontsize_value)
     plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
     plt.xlim(-23, 20)
@@ -198,4 +221,12 @@ if plot_strip_resp:
     plt.ylabel("Normalized strip response (AU)", fontsize=fontsize_value)
     plt.tick_params(axis="both", which="major", labelsize=fontsize_value)
     # plt.legend()
+    plt.show()
+
+if bool_pos_fn_time:
+    plt.scatter(
+        time_center_peak[time_center_peak != 0], peaks_positions[peaks_positions != 0]
+    )
+    plt.xlabel("Time (s)", fontsize=fontsize_value)
+    plt.ylabel("Position (mm)", fontsize=fontsize_value)
     plt.show()
