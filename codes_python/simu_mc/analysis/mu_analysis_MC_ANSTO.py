@@ -23,19 +23,30 @@ def exponential_model(x, a, b):
 
 
 def calc_mu(step_thickness, edep, uncertain_edep):
+    # convert in np.array type dfloat to prevent errors
+    step_thickness = np.array(step_thickness, dtype=float)
+    edep = np.array(edep, dtype=float)
+    uncertain_edep = np.array(uncertain_edep, dtype=float)
+
+    # Replace uncertainties = 0 by small value to prevent errors
+    uncertain_edep[uncertain_edep == 0] = 1e-6
+
+    # initial parameteres estimation (to help convergence)
+    p0 = [edep[0], 0.01]  # a = première valeur de edep, b ≈ petite valeur positive
     popt, pcov = curve_fit(
         exponential_model,
         step_thickness,
         edep,
         sigma=uncertain_edep,
         absolute_sigma=True,
+        p0=p0,
     )
     a_opt, b_opt = popt
     mu = b_opt
 
     # uncertainties on exponential fit
-    a_err, b_err = np.sqrt(np.diag(pcov))
-    mu_uncertain = b_err
+    perr = np.sqrt(np.diag(pcov))
+    mu_uncertain = perr[1] if perr[1] != np.inf else np.nan  # handle +/- inf case
 
     return mu, mu_uncertain
 
@@ -65,62 +76,52 @@ def generate_normal_matrix(matrix, matrix_uncertain):
     return normal_matrix, normal_matrix_uncertain
 
 
-def get_fit_expo_data(x_data, y_data, y_uncertain):
-    popt, pcov = curve_fit(
-        exponential_model,
-        x_data,
-        y_data,
-        sigma=y_uncertain,
-        absolute_sigma=True,
-    )
-    a_opt, b_opt = popt
-    mu = b_opt
-    a_err, b_err = np.sqrt(np.diag(pcov))
-    mu_uncertain = b_err
-
-    x_fit = np.linspace(min(step_thickness), max(step_thickness), len(step_thickness))
-    y_fit = exponential_model(x_fit, *popt)
-
-    return mu, mu_uncertain, x_fit, y_fit
-
-
 # DATA TO FILL IN ######################
 n_strips = 136
 step_thickness = np.array([0, 1, 2, 2.5, 3, 4, 5])
 step_phant_mat = "SolidHE"
-data_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\simulations_MC\results_step_phantom.xlsx"
-ws_name = "ANSTO_106keV_r2"
-fill_excel_bool = False
+data_file = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\simulations_MC\results\res_ANSTO_poly_CuCu_step_phant_MC_simu.xlsx"
+ws_name = "ANSTO_poly_CuCu_MC"
+fill_excel_bool = True
 fontsize_val = 20
-plot_res_bool = True
-mu_mc = 0.169
-uncertain_mu_mc = 0.004
-mu_mes = 0.173
-mu_NIST = 0.170
-uncertain_mu_mes = 0.003
+plot_res_bool = False
+mu_mc = 0.179
+uncertain_mu_mc = 0.002
+mu_mes = 0.176
+mu_NIST = 0.177
+uncertain_mu_mes = 0.001
 # ########################################
 
 # get edep of strips obtained from MC simu from excel file
 df = pd.read_excel(data_file, sheet_name=ws_name)
-subset_df = df.iloc[8 : 8 + n_strips, 2 : 2 + len(step_thickness)]
+subset_df = df.iloc[8 : 8 + n_strips, 24 : 24 + len(step_thickness)]
 subset_df_uncertain = df.iloc[
     8 : 8 + n_strips,
-    10 : 10 + len(step_thickness) * 2,
+    32 : 32 + len(step_thickness),
 ]
 edep_mc = subset_df.to_numpy()
-all_uncertain_mc = subset_df_uncertain.to_numpy()
+uncertain_mc = subset_df_uncertain.to_numpy()
 
-edep_mc = edep_mc.astype(np.float32)
-all_uncertain_mc = all_uncertain_mc.astype(np.float32)
+# print(f"edep_mc[0, :] = {edep_mc[0, :]}")
+# print(f"uncertain_mc[0, :] = {uncertain_mc[0, :]}")
+# print(f"edep_mc.shape = {edep_mc.shape}")
+# print(f"uncertain_mc.shape = {uncertain_mc.shape}")
+# print(f"edep_mc[-1] = {edep_mc[-1]}")
+# print(f"uncertain_mc[-1] = {uncertain_mc[-1]}")
+# sys.exit()
 
-# retrieves only statistical uncertainties
-stat_uncertain_mc = all_uncertain_mc[:, 0::2]
+# edep_mc = edep_mc.astype(np.float32)
+# uncertain_mc = uncertain_mc.astype(np.float32)
+
+# print(edep_mc[:, 1])
+# # print(uncertain_mc.shape)
+# sys.exit()
 
 # calc mu for every strips
 strip_mu_mc = []
 uncertain_mu_fit_mc = []
 for strip in range(n_strips):
-    mu, uncertain_mu = calc_mu(step_thickness, edep_mc[strip], stat_uncertain_mc[strip])
+    mu, uncertain_mu = calc_mu(step_thickness, edep_mc[strip], uncertain_mc[strip])
     strip_mu_mc.append(mu)
     uncertain_mu_fit_mc.append(uncertain_mu)
 if fill_excel_bool:
@@ -128,19 +129,20 @@ if fill_excel_bool:
     fill_excel(data_file, "test", uncertain_mu_fit_mc, 2, 3)
 
 
-# get measurements edep for high pvdr strip facing mb (mean of value) and strip 25 for MC
-edep_mes_high_pvdr = get_excel_data(data_file, ws_name, 10, 40, len(step_thickness), 1)
-uncertain_mes_high_pvdr = get_excel_data(
-    data_file, ws_name, 19, 40, len(step_thickness), 1
-)
+# # get measurements edep for high pvdr strip facing mb (mean of value) and strip 25 for MC
+# edep_mes_high_pvdr = get_excel_data(data_file, ws_name, 10, 39, len(step_thickness), 1)
+# uncertain_mes_high_pvdr = get_excel_data(
+#     data_file, ws_name, 19, 39, len(step_thickness), 1
+# )
 
-edep_mc_s25 = get_excel_data(data_file, ws_name, 10, 41, len(step_thickness), 1)
-uncertain_mc_s25 = get_excel_data(data_file, ws_name, 19, 41, len(step_thickness), 1)
+# edep_mc_s23 = get_excel_data(data_file, ws_name, 10, 40, len(step_thickness), 1)
+# uncertain_mc_s23 = get_excel_data(data_file, ws_name, 19, 40, len(step_thickness), 1)
 
 # print(f"edep_mes_high_pvdr = {edep_mes_high_pvdr}")
 # print(f"uncertain_mes_high_pvdr = {uncertain_mes_high_pvdr}")
-# print(f"edep_mc_s25 = {edep_mc_s25}")
-# print(f"uncertain_mc_s25 = {uncertain_mc_s25}")
+# print(f"edep_mc_s23 = {edep_mc_s23}")
+# print(f"uncertain_mc_s23 = {uncertain_mc_s23}")
+# # print(f"edep_mc[24, :] = {edep_mc[24, :]}")
 # sys.exit()
 
 # Plot results
@@ -164,8 +166,8 @@ if plot_res_bool:
     )
     plt.errorbar(
         step_thickness,
-        edep_mc_s25,
-        yerr=uncertain_mc_s25,
+        edep_mc_s23,
+        yerr=uncertain_mc_s23,
         fmt="^",
         capsize=5,
         color="blue",

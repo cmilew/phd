@@ -27,6 +27,7 @@ def get_strip_edep(edep_array, edep_uncertain_array):
             strip_uncertain.append(
                 np.sqrt(np.sum(uncertain_x[pixel : pixel + n_strip_pix] ** 2))
             )
+
         else:
             break
         pixel += n_strip_pix + n_interstrip_pix
@@ -73,33 +74,28 @@ def plot_mean_diff(strip_edep):
 
 
 ### DATA TO FILL ######
-slab_thickness = 0.0
-slab_material = "RW3"
-ws_name = "ESRF_force_coll_test"
+slab_thickness = 10.0
+slab_material = "SolidHE"
+ws_name = "ANSTO_poly_CuCu_MC"
+# ws_name = "test"
 fill_excel_bool = True
-plot_bool = True
+plot_bool = False
 mean_diff_bool = False
 edep_col_to_fill = 3
-uncertain_col_to_fill = 10
+uncertain_col_to_fill = 12
+# synchrotron = "ESRF"
+synchrotron = "ANSTO_poly_CuCu_MC"
+excel_path = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\simulations_MC\results\res_ANSTO_poly_CuCu_step_phant_MC_simu.xlsx"
 
 # simulation files
 path_edep = os.path.join(
     os.path.dirname(__file__),
-    rf"ESRF_poly_force_coll/{slab_thickness}mm_{slab_material}_detector_edep_tot.mhd",
+    rf"{ws_name}/{slab_thickness}mm_{slab_material}_detector_edep_tot.mhd",
 )
 path_edep_uncertain = os.path.join(
     os.path.dirname(__file__),
-    rf"ESRF_poly_force_coll/{slab_thickness}mm_{slab_material}_detector_edep_uncertainty_tot.mhd",
+    rf"{ws_name}/{slab_thickness}mm_{slab_material}_detector_edep_uncertainty_tot.mhd",
 )
-
-# path_edep = os.path.join(
-#     os.path.dirname(__file__),
-#     rf"{slab_thickness}mm_{slab_material}_detector_edep_tot.mhd",
-# )
-# path_edep_uncertain = os.path.join(
-#     os.path.dirname(__file__),
-#     rf"{slab_thickness}mm_{slab_material}_detector_edep_uncertainty_tot.mhd",
-# )
 
 # gets dose actor = img
 edep = sitk.ReadImage(path_edep)
@@ -109,6 +105,11 @@ edep_rel_uncertain = sitk.ReadImage(path_edep_uncertain)
 edep_array = sitk.GetArrayFromImage(edep)
 edep_rel_uncertain_array = sitk.GetArrayFromImage(edep_rel_uncertain)
 edep_uncertain = edep_array * edep_rel_uncertain_array / 100
+
+# fill_excel(excel_path, ws_name, edep_array[0][0], 5, 4)
+# sys.exit()
+
+
 strip_edep, strip_uncertain = get_strip_edep(edep_array, edep_uncertain)
 
 # calc 2 sigma for mb
@@ -121,18 +122,12 @@ plus_2sigma = mean_edep_mb + 2 * sigma
 if plot_bool:
     slab_thickness = int(slab_thickness)
     plt.bar(range(1, 137), strip_edep, capsize=3)
-    # plt.bar(range(1, 137), strip_edep, yerr=strip_uncertain, capsize=3)
-    plt.axhline(mean_edep_mb, color="red", linestyle="--", label="mean microbeam")
-    plt.axhline(minus_2sigma, color="green", linestyle="--", label="2 sigma")
-    plt.axhline(plus_2sigma, color="green", linestyle="--")
-    # plt.bar(
-    #     np.arange(2, 137, 2), strip_edep[1::2], yerr=strip_uncertain[1::2], capsize=5
-    # )
-    # plt.bar(np.arange(1, 137, 2), strip_edep[0::2])
-    # plt.yscale("log")
+    # plt.axhline(mean_edep_mb, color="red", linestyle="--", label="mean microbeam")
+    # plt.axhline(minus_2sigma, color="green", linestyle="--", label="2 sigma")
+    # plt.axhline(plus_2sigma, color="green", linestyle="--")
     plt.xlabel("Strip number")
     plt.ylabel("Edep (MeV)")
-    plt.title("Edep measured by strips ESRF")
+    plt.title(f"Edep measured by strips {synchrotron}")
     plt.legend()
     plt.show()
 
@@ -141,7 +136,6 @@ if mean_diff_bool:
 
 if fill_excel_bool:
     strip_rel_uncertain = strip_uncertain / strip_edep * 100
-    excel_path = r"C:\Users\milewski\OneDrive - Université Grenoble Alpes\these\papiers\caracterisation_detecteur_153_voies\simulations_MC\results_step_phantom.xlsx"
     fill_excel(excel_path, ws_name, strip_edep, 10, edep_col_to_fill)
     fill_excel(excel_path, ws_name, strip_uncertain, 10, uncertain_col_to_fill)
     fill_excel(excel_path, ws_name, strip_rel_uncertain, 10, uncertain_col_to_fill + 1)
